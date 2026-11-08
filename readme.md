@@ -133,7 +133,7 @@
 | id | BIGINT | 主键 |
 | user_id | BIGINT | 外键 → user，级联删除 |
 | parent_id | BIGINT NULL | 外键 → folder，级联删除；NULL 表示在根目录 |
-| parent_key | BIGINT | 生成列 `IFNULL(parent_id, 0)`，由数据库自动维护 |
+| parent_key | BIGINT | VIRTUAL 生成列 `IFNULL(parent_id, 0)`，由数据库自动维护 |
 | name | VARCHAR(255) | |
 | created_at / updated_at | DATETIME(3) | |
 
@@ -145,7 +145,7 @@
 | id | BIGINT | 主键 |
 | user_id | BIGINT | 外键 → user，级联删除 |
 | folder_id | BIGINT NULL | 外键 → folder，级联删除；NULL 表示在根目录 |
-| folder_key | BIGINT | 生成列 `IFNULL(folder_id, 0)` |
+| folder_key | BIGINT | VIRTUAL 生成列 `IFNULL(folder_id, 0)` |
 | title | VARCHAR(255) | |
 | content | MEDIUMTEXT | 正文 |
 | version | INT | 乐观锁版本号，默认 1 |
@@ -156,6 +156,7 @@
 唯一索引 `(user_id, folder_key, title)`。
 
 - **为什么用生成列**：MySQL 中 NULL 与 NULL 不相等，直接在 `(user_id, parent_id, name)` 上建唯一索引时，根目录下的同名限制会失效。`parent_id` 不能直接用 0 代替 NULL，因为外键要求它指向真实存在的文件夹；生成列既保留外键和级联删除，又让唯一索引在根目录生效
+- **生成列必须是 VIRTUAL**：MySQL 不允许 STORED 生成列的基础列带 `ON DELETE CASCADE` 外键，建表会直接报错（已实测）
 - **名称限制**：标题和文件夹名按 UTF-8 不超过 240 字节（约 80 个汉字），不能包含 `/ \ : * ? " < > |`，不能是 `.` 或 `..`
 - **文件夹最多 10 层**：MySQL 级联删除最多连锁 15 层，超过会报错
 - **Git 同步（第二版）再建**：`access_token`（id, user_id, name, token_hash 唯一, expires_at, last_used_at, revoked_at, created_at）和 `git_repo`（user_id 主键, head_commit CHAR(40), synced_rev BIGINT, updated_at）
@@ -278,6 +279,25 @@ pnpm build        # 生产构建
   - 同一浏览器多个标签页共享数据，可以用来测试版本冲突
 - 接入后端时把 `VITE_USE_MOCK` 改为 `false`，开发服务器会把 `/api` 代理到 `http://localhost:8000`
 - 注意：TypeScript 固定在 5.9，vue-tsc 暂不兼容 TypeScript 7
+
+### 后端
+
+需要 Python 3.12、PDM、MySQL 8、Redis。
+
+```bash
+cd backend
+pdm install
+cp .env.example .env    # 填写 DATABASE_URL、REDIS_URL
+pdm migrate             # 即 alembic upgrade head，建表 / 升级表结构
+pdm dev                 # http://localhost:8000，接口文档 /api/docs
+pdm lint                # ruff + pyright
+TEST_DATABASE_URL=mysql+aiomysql://用户:密码@主机:3306/underleaf_test pdm test
+```
+
+- 库需要使用 `utf8mb4` + `utf8mb4_0900_ai_ci`，可以用 `SHOW CREATE DATABASE underleaf;` 确认
+- **修改表结构的流程**：改 `app/models/` 中的模型 → `pdm run alembic revision --autogenerate -m "说明"` 生成迁移脚本 → 检查脚本内容（自动生成并不总是完全正确）→ 提交 → 在服务器上 `pdm migrate`
+- 不要用 `Base.metadata.create_all()` 建正式库的表，它不会记录版本，后续无法升级
+- 测试会清空 `TEST_DATABASE_URL` 指向的库，务必使用单独的测试库
 
 ### 接口约定（前端已按此实现，后端照此开发）
 
