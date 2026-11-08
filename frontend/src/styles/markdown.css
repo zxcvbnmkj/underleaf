@@ -1,0 +1,272 @@
+/* 预览区与分享页共用的 Markdown 排版，参考 VitePress 默认主题 */
+.markdown-body {
+  font-size: 16px;
+  line-height: 1.75;
+  color: var(--ul-text);
+  word-wrap: break-word;
+}
+.markdown-body > div > :first-child {
+  margin-top: 0;
+}
+
+.markdown-body h1,
+.markdown-body h2,
+.markdown-body h3,
+.markdown-body h4,
+.markdown-body h5,
+.markdown-body h6 {
+  margin: 1.6em 0 0.6em;
+  font-weight: 600;
+  line-height: 1.35;
+  letter-spacing: -0.01em;
+}
+.markdown-body h1 {
+  font-size: 2em;
+}
+.markdown-body h2 {
+  font-size: 1.5em;
+  padding-top: 1em;
+  border-top: 1px solid var(--ul-border);
+}
+.markdown-body > div > h2:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+.markdown-body h3 {
+  font-size: 1.25em;
+}
+.markdown-body h4 {
+  font-size: 1.08em;
+}
+
+.markdown-body p,
+.markdown-body ul,
+.markdown-body ol,
+.markdown-body blockquote,
+.markdown-body table,
+.markdown-body .code-block,
+.markdown-body .mermaid-block,
+.markdown-body .katex-block {
+  margin: 1em 0;
+}
+
+.markdown-body a {
+  color: var(--ul-accent);
+  font-weight: 500;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-color: color-mix(in srgb, var(--ul-accent) 40%, transparent);
+}
+.markdown-body a:hover {
+  text-decoration-color: var(--ul-accent);
+}
+
+.markdown-body ul,
+.markdown-body ol {
+  padding-left: 1.4em;
+}
+.markdown-body li + li,
+.markdown-body li > ul,
+.markdown-body li > ol {
+  margin-top: 0.25em;
+}
+.markdown-body li > ul,
+.markdown-body li > ol {
+  margin-bottom: 0;
+}
+
+/* 任务列表 */
+.markdown-body .contains-task-list {
+  list-style: none;
+  padding-left: 0.2em;
+}
+.markdown-body .task-list-item-checkbox {
+  margin: 0 0.5em 0 0;
+  vertical-align: -0.1em;
+  accent-color: var(--ul-accent);
+}
+
+.markdown-body blockquote {
+  padding: 0.1em 1em;
+  border-left: 3px solid var(--ul-accent);
+  border-radius: 0 6px 6px 0;
+  background: var(--ul-bg-soft);
+  color: var(--ul-text-2);
+}
+
+.markdown-body hr {
+  margin: 2em 0;
+  border: 0;
+  border-top: 1px solid var(--ul-border);
+}
+
+/* 表格 */
+.markdown-body table {
+  display: block;
+  overflow-x: auto;
+  border-collapse: collapse;
+  font-size: 0.94em;
+}
+.markdown-body th,
+.markdown-body td {
+  padding: 0.5em 1em;
+  border: 1px solid var(--ul-border);
+}
+.markdown-body th {
+  background: var(--ul-bg-soft);
+  font-weight: 600;
+}
+.markdown-body tr:nth-child(2n) td {
+  background: color-mix(in srgb, var(--ul-bg-soft) 50%, transparent);
+}
+
+/* 行内代码：与编辑区使用同一套颜色 */
+.markdown-body :not(pre) > code {
+  padding: 0.15em 0.4em;
+  border-radius: 4px;
+  background: var(--ul-code-inline-bg);
+  color: var(--ul-code-text);
+  font-family: var(--ul-font-mono);
+  font-size: 0.875em;
+}
+/* 链接里的行内代码跟随链接颜色 */
+.markdown-body a > code {
+  color: inherit;
+}
+
+/* 代码块（Shiki 双主题） */
+.markdown-body .code-block {
+  position: relative;
+  border-radius: 8px;
+  background: var(--ul-code-bg);
+}
+.markdown-body .code-block .code-lang {
+  position: absolute;
+  top: 6px;
+  right: 10px;
+  font-size: 12px;
+  color: var(--ul-text-3);
+  user-select: none;
+}
+.markdown-body pre.shiki {
+  margin: 0;
+  padding: 16px 20px;
+  overflow-x: auto;
+  background: transparent !important;
+  font-family: var(--ul-font-mono);
+  font-size: 0.875em;
+  line-height: 1.7;
+}
+.markdown-body .shiki span {
+  color: var(--shiki-light);
+  font-style: var(--shiki-light-font-style);
+  font-weight: var(--shiki-light-font-weight);
+}
+html.dark .markdown-body .shiki span {
+  color: var(--shiki-dark);
+  font-style: var(--shiki-dark-font-style);
+  font-weight: var(--shiki-dark-font-weight);
+}
+
+/* 公式 */
+.markdown-body .katex-block {
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 0.25em 0;
+}
+.markdown-body .katex-error {
+  color: var(--ul-danger);
+}
+
+/* Mermaid */
+.markdown-body pre.mermaid {
+  display: flex;
+  justify-content: center;
+  margin: 0;
+  padding: 16px;
+  border-radius: 8px;
+  background: var(--ul-bg-soft);
+  overflow-x: auto;
+  font-family: inherit;
+  white-space: pre;
+  color: var(--ul-text-3);
+}
+.markdown-body pre.mermaid[data-done] {
+  white-space: normal;
+}
+.markdown-body .mermaid-error {
+  color: var(--ul-danger);
+  font-size: 13px;
+  white-space: pre-wrap;
+}
+
+.markdown-body img {
+  max-width: 100%;
+}
+
+/* ---------- 打印 / PDF 导出 ----------
+ * 屏幕上为了好看做的横向滚动、悬停等效果，纸上都不存在，这里统一改成“完整铺开 + 合理分页”。
+ * 新增一种渲染块时，如果它可能比纸宽或不适合被分页切开，记得在这里补一条。 */
+@page {
+  size: A4;
+  margin: 16mm 18mm;
+}
+
+@media print {
+  .markdown-body {
+    font-size: 11pt;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+
+  /* 代码：自动换行，不再横向滚动 */
+  .markdown-body pre.shiki {
+    overflow: visible;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+  .markdown-body .code-block {
+    border: 1px solid var(--ul-border);
+  }
+
+  /* 表格、公式、图表：完整显示，过宽时缩放 */
+  .markdown-body table {
+    display: table;
+    width: 100%;
+    overflow: visible;
+  }
+  .markdown-body .katex-block,
+  .markdown-body pre.mermaid {
+    overflow: visible;
+  }
+  .markdown-body pre.mermaid svg {
+    max-width: 100% !important;
+    height: auto;
+  }
+
+  /* 分页：标题不落在页尾，块级元素尽量不被切开 */
+  .markdown-body h1,
+  .markdown-body h2,
+  .markdown-body h3,
+  .markdown-body h4,
+  .markdown-body h5,
+  .markdown-body h6 {
+    break-after: avoid;
+  }
+  .markdown-body .code-block,
+  .markdown-body .mermaid-block,
+  .markdown-body .katex-block,
+  .markdown-body blockquote,
+  .markdown-body tr,
+  .markdown-body img {
+    break-inside: avoid;
+  }
+  .markdown-body p {
+    orphans: 3;
+    widows: 3;
+  }
+
+  .markdown-body a {
+    text-decoration-color: currentColor;
+  }
+}
