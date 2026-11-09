@@ -9,7 +9,10 @@ from app.models.base import TABLE_ARGS, Base, IdMixin, Timestamp, TimestampMixin
 
 
 class AccessToken(IdMixin, TimestampMixin, Base):
-    """个人访问令牌：`git clone` 时作为密码使用。只存 SHA-256 哈希，明文只在创建时返回一次。"""
+    """个人访问令牌：`git clone` 时作为密码使用。
+
+    校验用 SHA-256 哈希；另存一份加密后的令牌（密钥由 JWT_SECRET 派生），供用户在网页上随时查看。
+    """
 
     __tablename__ = "access_token"
     __table_args__ = TABLE_ARGS
@@ -19,6 +22,8 @@ class AccessToken(IdMixin, TimestampMixin, Base):
     name: Mapped[str] = mapped_column(String(64))
     # 令牌是 32 字节随机数，SHA-256 即可（不需要 Argon2 这类慢哈希）
     token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    # Fernet 加密的令牌，只用于网页上显示；更换 JWT_SECRET 后无法解密（令牌照常可用）
+    token_encrypted: Mapped[str | None] = mapped_column(String(255))
     # 令牌末尾 4 个字符，列表中展示，帮助用户辨认
     last_chars: Mapped[str] = mapped_column(String(8))
     # NULL 表示永不过期

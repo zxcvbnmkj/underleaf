@@ -15,14 +15,11 @@ class TokenOut(Schema):
     name: str
     # 令牌末尾几个字符，帮助辨认
     last_chars: str
+    # 完整令牌，用户可以随时查看；无法解密（更换过 JWT_SECRET）时为 null
+    token: str | None
     expires_at: UtcDatetime | None
     last_used_at: UtcDatetime | None
     created_at: UtcDatetime
-
-
-class TokenCreated(TokenOut):
-    # 明文令牌，只在创建时返回这一次
-    token: str
 
 
 class GitInfoOut(Schema):

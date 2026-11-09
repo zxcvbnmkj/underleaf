@@ -50,16 +50,9 @@ async def client(engine: AsyncEngine, session: object) -> AsyncIterator[httpx.As
 async def register(
     c: httpx.AsyncClient, box: Mailbox, email: str = "alice@example.com", nickname: str = "爱丽丝"
 ) -> httpx.Response:
-    res = await c.post("/api/v1/auth/email-code", json={"email": email, "purpose": "register"})
-    assert res.status_code == 204, res.text
     return await c.post(
         "/api/v1/auth/register",
-        json={
-            "email": email,
-            "code": box.codes[email.lower()],
-            "nickname": nickname,
-            "password": PASSWORD,
-        },
+        json={"email": email, "nickname": nickname, "password": PASSWORD},
     )
 
 
@@ -78,26 +71,14 @@ async def test_register_logs_in(client: httpx.AsyncClient, mailbox: Mailbox):
     assert me.json() == {"id": res.json()["id"], "email": "alice@example.com", "nickname": "爱丽丝"}
 
 
-async def test_register_code_is_single_use(client: httpx.AsyncClient, mailbox: Mailbox):
-    await register(client, mailbox)
-    res = await client.post(
-        "/api/v1/auth/register",
-        json={
-            "email": "bob@example.com",
-            "code": mailbox.codes["alice@example.com"],
-            "nickname": "bob",
-            "password": PASSWORD,
-        },
-    )
-    assert res.json()["code"] == "code_invalid"  # 验证码与邮箱绑定，且已用过
-
-
 async def test_register_conflicts(client: httpx.AsyncClient, mailbox: Mailbox):
     await register(client, mailbox)
-    res = await client.post(
-        "/api/v1/auth/email-code", json={"email": "alice@example.com", "purpose": "register"}
-    )
+    res = await register(client, mailbox, email="Alice@example.com", nickname="alice2")
     assert res.status_code == 409 and res.json()["code"] == "email_registered"
+    res = await client.post(
+        "/api/v1/auth/email-code", json={"email": "bob@example.com", "purpose": "register"}
+    )
+    assert res.status_code == 422  # 注册不再需要验证码
 
     res = await register(client, mailbox, email="bob@example.com", nickname="爱丽丝")
     assert res.status_code == 409 and res.json()["code"] == "nickname_taken"
@@ -119,7 +100,6 @@ async def test_register_validation(
         "/api/v1/auth/register",
         json={
             "email": "x@example.com",
-            "code": "123456",
             "nickname": nickname,
             "password": password,
         },

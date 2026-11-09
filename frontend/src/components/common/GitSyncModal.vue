@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import {
-  NAlert,
   NButton,
   NEmpty,
   NIcon,
@@ -13,9 +12,9 @@ import {
   useDialog,
   useMessage,
 } from 'naive-ui'
-import { Copy, Plus } from 'lucide-vue-next'
+import { Copy, Eye, EyeOff, Plus } from 'lucide-vue-next'
 import { gitApi } from '@/api/git'
-import type { AccessToken, CreatedAccessToken, GitInfo } from '@/types'
+import type { AccessToken, GitInfo } from '@/types'
 import { formatDateTime, formatRelative } from '@/utils/format'
 
 const show = defineModel<boolean>('show', { required: true })
@@ -25,8 +24,16 @@ const dialog = useDialog()
 const loading = ref(false)
 const info = ref<GitInfo | null>(null)
 const tokens = ref<AccessToken[]>([])
-/** 刚创建的令牌，明文只显示这一次 */
-const created = ref<CreatedAccessToken | null>(null)
+/** 显示完整令牌的行（默认遮住，避免旁人看到） */
+const revealed = ref(new Set<number>())
+function toggleReveal(id: number) {
+  const next = new Set(revealed.value)
+  if (!next.delete(id)) next.add(id)
+  revealed.value = next
+}
+function masked(t: AccessToken) {
+  return revealed.value.has(t.id) ? (t.token ?? '') : `ulp_${'•'.repeat(16)}${t.lastChars}`
+}
 
 const cloneUrl = computed(() => (info.value ? `${location.origin}${info.value.clonePath}` : ''))
 const cloneCommand = computed(() => `git clone ${cloneUrl.value}`)
@@ -46,7 +53,7 @@ async function load() {
 
 watch(show, (v) => {
   if (v) {
-    created.value = null
+    revealed.value = new Set()
     newName.value = ''
     void load()
   }
@@ -54,12 +61,12 @@ watch(show, (v) => {
 
 // ---------- 新建令牌 ----------
 const newName = ref('')
-const expiry = ref<number | null>(90)
+const expiry = ref<number>(0)
 const expiryOptions = [
+  { label: '永不过期', value: 0 },
   { label: '30 天', value: 30 },
   { label: '90 天', value: 90 },
   { label: '1 年', value: 365 },
-  { label: '永不过期', value: 0 },
 ]
 const creating = ref(false)
 
@@ -71,9 +78,11 @@ async function createToken() {
   }
   creating.value = true
   try {
-    created.value = await gitApi.createToken(name, expiry.value || null)
+    const token = await gitApi.createToken(name, expiry.value || null)
     newName.value = ''
-    tokens.value = await gitApi.listTokens()
+    tokens.value = [token, ...tokens.value]
+    revealed.value = new Set([...revealed.value, token.id])
+    if (token.token) void copy(token.token, '新令牌')
   } catch (e) {
     message.error((e as Error).message)
   } finally {
@@ -91,7 +100,6 @@ function revoke(token: AccessToken) {
       try {
         await gitApi.revokeToken(token.id)
         tokens.value = tokens.value.filter((t) => t.id !== token.id)
-        if (created.value?.id === token.id) created.value = null
         message.success('已吊销')
       } catch (e) {
         message.error((e as Error).message)
@@ -140,22 +148,10 @@ function selectAll(e: FocusEvent) {
           </NButton>
         </NInputGroup>
         <p class="note">
-          Git 提示输入时：用户名随意填写（如 {{ info?.username }}），密码填写下方生成的访问令牌。
+          Git 提示输入时：用户名随意填写（如
+          {{ info?.username }}），密码粘贴下方的访问令牌。只需输入一次，之后 Git 会自动记住。
         </p>
       </section>
-
-      <NAlert v-if="created" type="success" class="block" :title="`已创建「${created.name}」`">
-        <p class="note">请立即复制保存，关闭后无法再次查看。</p>
-        <NInputGroup>
-          <NInput :value="created.token" readonly class="mono" @focus="selectAll" />
-          <NButton type="primary" @click="copy(created.token, '令牌')">
-            <template #icon
-              ><NIcon><Copy /></NIcon
-            ></template>
-            复制
-          </NButton>
-        </NInputGroup>
-      </NAlert>
 
       <section class="block">
         <div class="label">访问令牌</div>
@@ -178,18 +174,39 @@ function selectAll(e: FocusEvent) {
         <NEmpty v-if="!tokens.length && !loading" size="small" description="还没有令牌" />
         <ul v-else class="tokens">
           <li v-for="t in tokens" :key="t.id" class="token">
-            <div class="token-main">
-              <div class="token-name">
-                {{ t.name }} <span class="token-tail">…{{ t.lastChars }}</span>
+            <div class="token-head">
+              <div class="token-main">
+                <div class="token-name">{{ t.name }}</div>
+                <div class="token-meta">
+                  创建于 {{ formatDateTime(t.createdAt).slice(0, 10) }} ·
+                  {{
+                    t.expiresAt ? `${formatDateTime(t.expiresAt).slice(0, 10)} 过期` : '永不过期'
+                  }}
+                  ·
+                  {{ t.lastUsedAt ? `${formatRelative(t.lastUsedAt)}使用过` : '从未使用' }}
+                </div>
               </div>
-              <div class="token-meta">
-                创建于 {{ formatDateTime(t.createdAt).slice(0, 10) }} ·
-                {{ t.expiresAt ? `${formatDateTime(t.expiresAt).slice(0, 10)} 过期` : '永不过期' }}
-                ·
-                {{ t.lastUsedAt ? `${formatRelative(t.lastUsedAt)}使用过` : '从未使用' }}
-              </div>
+              <NButton size="small" type="error" quaternary @click="revoke(t)">吊销</NButton>
             </div>
-            <NButton size="small" type="error" quaternary @click="revoke(t)">吊销</NButton>
+            <NInputGroup v-if="t.token">
+              <NInput :value="masked(t)" readonly size="small" class="mono" @focus="selectAll" />
+              <NButton
+                size="small"
+                :aria-label="revealed.has(t.id) ? '隐藏' : '显示'"
+                @click="toggleReveal(t.id)"
+              >
+                <template #icon
+                  ><NIcon><EyeOff v-if="revealed.has(t.id)" /><Eye v-else /></NIcon
+                ></template>
+              </NButton>
+              <NButton size="small" type="primary" ghost @click="copy(t.token, '令牌')">
+                <template #icon
+                  ><NIcon><Copy /></NIcon
+                ></template>
+                复制
+              </NButton>
+            </NInputGroup>
+            <div v-else class="note">无法显示（服务器密钥已更换），需要查看时请重新生成</div>
           </li>
         </ul>
       </section>
@@ -241,11 +258,14 @@ function selectAll(e: FocusEvent) {
   padding: 0;
 }
 .token {
+  padding: 10px 0;
+  border-top: 1px solid var(--ul-border);
+}
+.token-head {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 0;
-  border-top: 1px solid var(--ul-border);
+  margin-bottom: 6px;
 }
 .token-main {
   flex: 1;
@@ -256,11 +276,6 @@ function selectAll(e: FocusEvent) {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-.token-tail {
-  color: var(--ul-text-2);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 12px;
 }
 .token-meta {
   font-size: 12px;

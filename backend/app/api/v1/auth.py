@@ -90,12 +90,9 @@ async def update_me(body: UpdateMeIn, user: CurrentUser, session: Session) -> Us
 
 @router.post("/email-code", status_code=204)
 async def email_code(body: SendCodeIn, request: Request, session: Session) -> None:
-    """发送验证码。注册时邮箱必须未注册；登录、重置密码时邮箱必须已注册。"""
+    """发送验证码（登录、重置密码），邮箱必须已注册。"""
     await rate_limit(f"email-code:{_client_ip(request)}", 5, 60)
-    registered = await _user_by_email(session, body.email) is not None
-    if body.purpose == "register" and registered:
-        raise AppError(409, "email_registered", "这个邮箱已注册，请直接登录")
-    if body.purpose != "register" and not registered:
+    if await _user_by_email(session, body.email) is None:
         raise AppError(404, "email_not_registered", "这个邮箱还没有注册")
     await send_code(body.email, body.purpose)
 
@@ -106,7 +103,6 @@ async def register(body: RegisterIn, response: Response, session: Session) -> Us
         raise AppError(409, "email_registered", "这个邮箱已注册，请直接登录")
     if await _user_by_nickname(session, body.nickname):
         raise AppError(409, "nickname_taken", "这个昵称已被使用")
-    await verify_code(body.email, "register", body.code)
     user = User(
         email=body.email,
         nickname=body.nickname,

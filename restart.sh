@@ -1,15 +1,18 @@
 #!/usr/bin/env bash
-# 后端进程管理（参考 taskNote 的 restart.sh，去掉了多环境）：
+# 服务器上的后端进程管理（参考 taskNote 的 restart.sh，去掉了多环境）：
 #   bash restart.sh {start|stop|restart|status|logs}
 #
-# 端口、worker 数从 shared/.env 中的 PORT、WORKERS 读取，默认 8100、2。
+# 端口、worker 数从数据目录 .env 中的 PORT、WORKERS 读取，默认 8100、2。
 # 只监听 127.0.0.1，由 Nginx 对外提供服务。
+#
+# 部署目录 /home/ubuntu/servers/underleaf 每次部署都会整个删除重建，
+# 需要长期保留的 .env、日志、pid 放在数据目录 /home/ubuntu/data/underleaf。
 set -euo pipefail
 
 APP_NAME="underleaf"
-APP_DIR="$(cd "$(dirname "$0")/.." && pwd)"          # 版本目录（通常经由 current 软链接）
-BASE="${UNDERLEAF_BASE:-/home/ubuntu/servers/underleaf}"
-SHARED="$BASE/shared"
+APP_DIR="$(cd "$(dirname "$0")" && pwd)"             # 部署目录（restart.sh 位于其根目录）
+SHARED="${UNDERLEAF_DATA:-/home/ubuntu/data/underleaf}"
+VENV="${UNDERLEAF_VENV:-/home/ubuntu/venv/underleaf-venv-py312}"
 ENV_FILE="$SHARED/.env"
 
 read_env() { grep -E "^$1=" "$ENV_FILE" 2>/dev/null | tail -1 | cut -d= -f2 | tr -d ' "\r' || true; }
@@ -51,7 +54,7 @@ start_service() {
   if [ -n "$(get_pid)" ]; then echo "[$APP_NAME] 已在运行 (PID: $(get_pid))"; return; fi
   cd "$APP_DIR/backend"
   # 直接用 venv 中的 uvicorn 启动，记录的 PID 就是 uvicorn 主进程，停止时会一并结束 worker
-  nohup "$SHARED/venv/bin/uvicorn" app.main:app --host 127.0.0.1 --port "$PORT" \
+  nohup "$VENV/bin/uvicorn" app.main:app --host 127.0.0.1 --port "$PORT" \
     --workers "$WORKERS" --proxy-headers --forwarded-allow-ips 127.0.0.1 \
     >> "$LOG_FILE" 2>&1 &
   echo $! > "$PID_FILE"

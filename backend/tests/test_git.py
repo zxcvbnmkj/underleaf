@@ -53,11 +53,12 @@ async def test_token_lifecycle(api: httpx.AsyncClient, session: AsyncSession):
 
     listed = (await api.get("/api/v1/tokens")).json()
     assert [t["id"] for t in listed] == [created["id"]]
-    assert "token" not in listed[0]  # 明文只在创建时返回
+    assert listed[0]["token"] == created["token"]  # 随时可以查看
 
-    # 数据库中只有哈希
+    # 数据库中只有哈希和密文，没有明文
     record = await session.get(AccessToken, created["id"])
-    assert record is not None and created["token"] not in record.token_hash
+    assert record is not None and record.token_encrypted
+    assert created["token"] not in (record.token_hash, record.token_encrypted)
 
     assert (await api.delete(f"/api/v1/tokens/{created['id']}")).status_code == 204
     assert (await api.get("/api/v1/tokens")).json() == []

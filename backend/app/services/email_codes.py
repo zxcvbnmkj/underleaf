@@ -16,14 +16,13 @@ from app.core.errors import AppError
 from app.core.redis import redis
 from app.services.mailer import send_mail
 
-Purpose = Literal["register", "login", "reset_password"]
+Purpose = Literal["login", "reset_password"]
 
 CODE_TTL = 5 * 60
 COOLDOWN = 60
 MAX_ATTEMPTS = 5
 
 _PURPOSE_TEXT: dict[Purpose, str] = {
-    "register": "注册账号",
     "login": "登录",
     "reset_password": "重置密码",
 }

@@ -36,7 +36,7 @@ export interface SharedNote {
   author: { nickname: string }
 }
 
-export type EmailCodePurpose = 'register' | 'login' | 'reset_password'
+export type EmailCodePurpose = 'login' | 'reset_password'
 
 /** 个人访问令牌（Git 同步时作为密码使用） */
 export interface AccessToken {
@@ -44,14 +44,11 @@ export interface AccessToken {
   name: string
   /** 令牌末尾几个字符，帮助辨认 */
   lastChars: string
+  /** 完整令牌，随时可以查看；服务器无法解密（更换过密钥）时为 null */
+  token: string | null
   expiresAt: string | null
   lastUsedAt: string | null
   createdAt: string
-}
-
-/** 创建令牌时的返回值，明文令牌只返回这一次 */
-export interface CreatedAccessToken extends AccessToken {
-  token: string
 }
 
 export interface GitInfo {

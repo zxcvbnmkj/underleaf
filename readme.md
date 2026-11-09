@@ -12,7 +12,7 @@
   - 分享页：宽屏固定在正文右侧，窄屏通过右下角「目录」按钮打开；没有标题时不显示
 - 笔记支持网页链接分享（**只读**）、下载为 PDF、下载为 Word
 - 自动保存（停止输入 30 秒等时机）+ 本地草稿防丢失；多设备编辑同一篇时检测冲突，不静默覆盖
-- 注册需要邮箱验证码 + 昵称 + 密码；登录支持「邮箱 / 昵称 + 密码」和「邮箱 + 验证码」；忘记密码可以用验证码登录或重置密码
+- 注册填写邮箱 + 昵称 + 密码（不需要验证码）；登录支持「邮箱 / 昵称 + 密码」和「邮箱 + 验证码」；忘记密码可以用验证码登录或重置密码
 - 通过 Git 在本地与网页之间同步笔记（clone / pull / push），访问令牌在「用户菜单 → Git 同步」中生成，详见「Git 同步」
 
 ### 暂不考虑
@@ -131,7 +131,7 @@
 
 ### 登录
 - 一个邮箱对应一个用户；昵称也全局唯一（不区分大小写）
-- **注册**：邮箱 → 收到 6 位验证码 → 填写验证码、昵称、密码 → 注册并登录。邮箱或昵称已被占用时提示
+- **注册**：填写邮箱、昵称、密码 → 注册并登录（不校验邮箱，无需验证码）。邮箱或昵称已被占用时提示
 - **登录（三种方式，登录的是同一个账号）**：
   - 邮箱 + 密码
   - 昵称 + 密码（与上一种共用一个输入框，后端根据是否包含 `@` 区分，因此昵称不能包含 `@`）
@@ -142,7 +142,7 @@
 - **不做账号锁定**：防暴力破解靠按 IP 限流（Redis 计数）：登录接口每分钟 10 次，发验证码每分钟 5 次；账号不存在时也做一次同样耗时的密码校验，无法通过响应时间判断账号是否存在
 - **验证码**：存 Redis（只存哈希），不建表
   - 有效期 5 分钟（Redis TTL 自动过期），同一邮箱 60 秒内只能发送一次，连续输错 5 次作废，验证成功后立即删除
-  - 区分用途：注册 / 登录 / 重置密码，不能混用
+  - 区分用途：登录 / 重置密码，不能混用
   - 不能放在后端进程内存中：重启会丢失，多 worker 部署时发码和验码可能落在不同进程
 - **登录态**：JWT（HS256，有效期 30 天）放在 httpOnly、SameSite=Lax 的 Cookie `underleaf_session` 中，前端 JS 读不到。JWT 中带 `token_version`：
   - 修改密码：版本加 1，其他设备失效，当前设备换发新令牌保持登录
@@ -200,7 +200,7 @@
 - **名称限制**：标题和文件夹名按 UTF-8 不超过 240 字节（约 80 个汉字），不能包含 `/ \ : * ? " < > |`，不能是 `.` 或 `..`
 - **文件夹最多 10 层**：MySQL 级联删除最多连锁 15 层，超过会报错
 - **`image`**（图片）：id, user_id（可空，删除用户时置空）, path（相对上传目录，唯一）, mime, size, created_at / updated_at。文件本身存在磁盘上，见 [docs/images.md](docs/images.md)
-- **`access_token`**（Git 访问令牌）：id, user_id（级联删除）, name, token_hash（SHA-256，唯一）, last_chars（末尾 4 个字符，用于辨认）, expires_at / last_used_at / revoked_at（可空）, created_at / updated_at
+- **`access_token`**（Git 访问令牌）：id, user_id（级联删除）, name, token_hash（SHA-256，唯一，用于校验）, token_encrypted（加密的令牌，供网页查看）, last_chars（末尾 4 个字符，用于辨认）, expires_at / last_used_at / revoked_at（可空）, created_at / updated_at
 - **`git_repo`**（每个用户的仓库状态，同时作为该用户 Git 操作的行锁）：user_id 主键（级联删除）, head_commit, synced_rev（可空，生成快照时的 `user.content_rev`）, updated_at
 
 ### Git 同步
@@ -230,7 +230,7 @@
 #### 实现方案
 - **以数据库为准，Git 仓库只是镜像**，网页端的现有设计不需要改动
 - 仓库地址：`{网站}/api/v1/git/{user_id}/notes.git`，只有一个分支 `main`
-- 服务端为每个用户维护一个裸仓库 `{GIT_REPO_DIR}/{user_id}.git`（服务器上在 `shared/git`），用 dulwich 实现 Git Smart HTTP 协议，认证用 HTTP Basic（用户名随意，密码为访问令牌）
+- 服务端为每个用户维护一个裸仓库 `{GIT_REPO_DIR}/{user_id}.git`（服务器上在 `/home/ubuntu/data/underleaf/git`），用 dulwich 实现 Git Smart HTTP 协议，认证用 HTTP Basic（用户名随意，密码为访问令牌）
 - 加锁：`git_repo` 行 `SELECT ... FOR UPDATE`，同一用户的快照和推送串行执行
 - **fetch / pull**：对该用户加锁，比较 `user.content_rev` 与 `git_repo.synced_rev`，不相等说明网页上有修改，从数据库生成目录树并提交一个快照，更新 `synced_rev`。网页上的多次自动保存不会各自生成提交
 - **push**：
@@ -245,8 +245,9 @@
 - **实现位置**：`app/api/v1/git.py`（Smart HTTP 接口）、`app/api/v1/tokens.py`（令牌管理）、`app/services/git_repo.py`（快照、推送校验与写回计划，不访问数据库）、`app/services/git_sync.py`（加锁、快照、写回数据库）、`app/services/git_http.py`（dulwich 协议处理）
 
 #### 认证
-- 新增**个人访问令牌**：在网页设置中生成，`git clone` 时作为密码使用（不直接使用登录密码，泄露后可单独吊销）
-- 令牌只存哈希（格式 `ulp_` + 43 个随机字符），可以设置有效期、随时吊销；每个用户最多 20 个有效令牌
+- 使用**个人访问令牌**（不做 SSH 公钥，对比和理由见 [docs/git-auth.md](docs/git-auth.md)）：在网页「用户菜单 → Git 同步」中生成，`git clone` 时作为密码使用，只需输入一次，Git 会自动记住（不直接使用登录密码，泄露后可单独吊销）
+- 令牌格式 `ulp_` + 43 个随机字符，默认永不过期（也可以选 30 天 / 90 天 / 1 年），随时可以在网页上查看和复制、随时吊销；每个用户最多 20 个有效令牌
+- 存储：校验用 SHA-256 哈希；另存一份加密的令牌供查看，密钥由 `JWT_SECRET` 派生。更换 `JWT_SECRET` 后令牌照常可用，只是网页上无法再显示
 - 认证失败按 IP 限流（10 分钟 20 次），push 按用户限流（每分钟 30 次）
 
 #### 已知限制
@@ -283,10 +284,8 @@ underleaf/
 │       ├── stores/             # Pinia
 │       ├── views/              # 页面（ExportRenderView 为 PDF 导出渲染页）
 │       └── router/
-├── deploy/                 # package.sh（打包）、deploy.sh（部署）、restart.sh（进程管理）
-├── docs/                   # 专题文档：pipeline.md（部署流水线）、images.md（图片存储与迁移）
-├── uploads/                # 本地开发时上传的图片（不提交；服务器上在 shared/uploads）
-├── git-repos/              # 本地开发时 Git 同步的裸仓库（不提交；服务器上在 shared/git）
+├── docs/                   # 专题文档：pipeline.md（部署流水线）、images.md（图片存储与迁移）、git-auth.md（Git 认证方式对比）
+├── restart.sh              # 服务器上的后端进程管理（start / stop / restart / status / logs）
 └── readme.md
 ```
 
@@ -331,7 +330,7 @@ pnpm build        # 生产构建
 ```
 
 - 前端依赖后端：先启动后端（见下方「后端」），开发服务器会把 `/api`、`/uploads` 代理到 `http://localhost:8000`
-- 本地未配置 SMTP 时，注册 / 登录的验证码打印在后端日志中
+- 本地未配置 SMTP 时，登录 / 重置密码的验证码打印在后端日志中
 - 注意：TypeScript 固定在 5.9，vue-tsc 暂不兼容 TypeScript 7
 
 ### 后端
@@ -369,8 +368,8 @@ TEST_DATABASE_URL=mysql+aiomysql://用户:密码@主机:3306/underleaf_test pdm 
 |---|---|---|
 | GET | `/auth/me` | 当前用户 `{ id, email, nickname }`，未登录返回 401 |
 | PATCH | `/auth/me` | 修改昵称 `{ nickname }`，已被占用返回 409 |
-| POST | `/auth/email-code` | 发送验证码 `{ email, purpose: "register" \| "login" \| "reset_password" }` |
-| POST | `/auth/register` | 注册 `{ email, code, nickname, password }`，邮箱或昵称已被占用返回 409 |
+| POST | `/auth/email-code` | 发送验证码 `{ email, purpose: "login" \| "reset_password" }`，邮箱必须已注册 |
+| POST | `/auth/register` | 注册 `{ email, nickname, password }`，邮箱或昵称已被占用返回 409 |
 | POST | `/auth/login/email-code` | 验证码登录 `{ email, code }`，未注册返回 404 |
 | POST | `/auth/login/password` | 密码登录 `{ account, password }`，`account` 为邮箱或昵称 |
 | POST | `/auth/password/reset` | 重置密码 `{ email, code, newPassword }` |

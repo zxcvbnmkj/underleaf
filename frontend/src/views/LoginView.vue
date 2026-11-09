@@ -29,17 +29,17 @@ const message = useMessage()
 const auth = useAuthStore()
 const { isDark, toggle: toggleTheme } = useTheme()
 
-type Tab = 'password' | 'code' | 'register'
-type Mode = Tab | 'reset'
-const tab = ref<Tab>(route.query.tab === 'register' ? 'register' : 'password')
-const mode = ref<Mode>(tab.value)
+type Tab = 'password' | 'code'
+type Mode = Tab | 'register' | 'reset'
+const tab = ref<Tab>('password')
+const mode = ref<Mode>(route.query.tab === 'register' ? 'register' : 'password')
 const submitting = ref(false)
 
 // 邮箱在各表单间共享，切换方式时不用重复输入；密码登录的账号可以是邮箱或昵称
 const email = ref('')
 const pwdForm = ref({ account: '', password: '' })
 const codeForm = ref({ code: '' })
-const registerForm = ref({ code: '', nickname: '', password: '', confirm: '' })
+const registerForm = ref({ nickname: '', password: '', confirm: '' })
 const resetForm = ref({ code: '', newPassword: '', confirm: '' })
 
 const pwdRef = ref<FormInst>()
@@ -77,7 +77,6 @@ const pwdRules: FormRules = {
 const codeRules: FormRules = { email: emailRule, code: codeRule }
 const registerRules: FormRules = {
   email: emailRule,
-  code: codeRule,
   nickname: {
     trigger: 'blur',
     validator: (_r: unknown, v: string) =>
@@ -133,7 +132,6 @@ const register = () =>
   run(registerRef.value, async () => {
     const user = await authApi.register({
       email: email.value.trim(),
-      code: registerForm.value.code,
       nickname: registerForm.value.nickname.trim(),
       password: registerForm.value.password,
     })
@@ -158,7 +156,7 @@ function switchTo(next: Mode) {
   // 已在密码登录中填了邮箱时，带到其他表单
   if (next !== 'password' && !email.value && pwdForm.value.account.includes('@'))
     email.value = pwdForm.value.account.trim()
-  if (next !== 'reset') tab.value = next
+  if (next === 'password' || next === 'code') tab.value = next
   mode.value = next
 }
 </script>
@@ -176,10 +174,9 @@ function switchTo(next: Mode) {
     <div class="login-card">
       <div class="login-head">
         <BrandLogo :size="22" />
-        <p class="tagline">左边写 Markdown，右边看效果，笔记随时随地同步</p>
       </div>
 
-      <template v-if="mode !== 'reset'">
+      <template v-if="mode === 'password' || mode === 'code'">
         <NTabs
           :value="tab"
           type="line"
@@ -244,79 +241,66 @@ function switchTo(next: Mode) {
                 </NInputGroup>
               </NFormItem>
               <NButton type="primary" block attr-type="submit" :loading="submitting">登录</NButton>
-              <div class="form-links center">
-                <a href="#" @click.prevent="switchTo('register')">还没有账号？注册</a>
-              </div>
-            </NForm>
-          </NTabPane>
-
-          <NTabPane name="register" tab="注册">
-            <NForm
-              ref="registerRef"
-              :model="{ email, ...registerForm }"
-              :rules="registerRules"
-              @submit.prevent="register"
-            >
-              <NFormItem path="email" :show-label="false">
-                <NInput
-                  v-model:value="email"
-                  placeholder="邮箱"
-                  :input-props="{ type: 'email', autocomplete: 'email' }"
-                />
-              </NFormItem>
-              <NFormItem path="code" :show-label="false">
-                <NInputGroup>
-                  <NInput
-                    v-model:value="registerForm.code"
-                    placeholder="6 位验证码"
-                    maxlength="6"
-                    :input-props="{ inputmode: 'numeric', autocomplete: 'one-time-code' }"
-                  />
-                  <SendCodeButton :email="email" purpose="register" />
-                </NInputGroup>
-              </NFormItem>
-              <NFormItem path="nickname" :show-label="false">
-                <NInput
-                  v-model:value="registerForm.nickname"
-                  placeholder="昵称（2～20 个字符，可用于登录）"
-                  maxlength="20"
-                  :input-props="{ autocomplete: 'nickname' }"
-                />
-              </NFormItem>
-              <NFormItem path="password" :show-label="false">
-                <NInput
-                  v-model:value="registerForm.password"
-                  type="password"
-                  show-password-on="click"
-                  placeholder="密码（至少 8 个字符）"
-                  :input-props="{ autocomplete: 'new-password' }"
-                />
-              </NFormItem>
-              <NFormItem path="confirm" :show-label="false">
-                <NInput
-                  v-model:value="registerForm.confirm"
-                  type="password"
-                  show-password-on="click"
-                  placeholder="确认密码"
-                  :input-props="{ autocomplete: 'new-password' }"
-                />
-              </NFormItem>
-              <NButton type="primary" block attr-type="submit" :loading="submitting"
-                >注册并登录</NButton
-              >
-              <div class="form-links center">
-                <a href="#" @click.prevent="switchTo('password')">已有账号？登录</a>
-              </div>
             </NForm>
           </NTabPane>
         </NTabs>
+      </template>
+
+      <template v-else-if="mode === 'register'">
+        <button class="back-link" @click="switchTo('password')">
+          <NIcon><ArrowLeft /></NIcon> 返回登录
+        </button>
+        <h2 class="panel-title">注册账号</h2>
+        <NForm
+          ref="registerRef"
+          :model="{ email, ...registerForm }"
+          :rules="registerRules"
+          @submit.prevent="register"
+        >
+          <NFormItem path="email" :show-label="false">
+            <NInput
+              v-model:value="email"
+              placeholder="邮箱"
+              :input-props="{ type: 'email', autocomplete: 'email' }"
+            />
+          </NFormItem>
+          <NFormItem path="nickname" :show-label="false">
+            <NInput
+              v-model:value="registerForm.nickname"
+              placeholder="昵称（2～20 个字符，可用于登录）"
+              maxlength="20"
+              :input-props="{ autocomplete: 'nickname' }"
+            />
+          </NFormItem>
+          <NFormItem path="password" :show-label="false">
+            <NInput
+              v-model:value="registerForm.password"
+              type="password"
+              show-password-on="click"
+              placeholder="密码（至少 8 个字符）"
+              :input-props="{ autocomplete: 'new-password' }"
+            />
+          </NFormItem>
+          <NFormItem path="confirm" :show-label="false">
+            <NInput
+              v-model:value="registerForm.confirm"
+              type="password"
+              show-password-on="click"
+              placeholder="确认密码"
+              :input-props="{ autocomplete: 'new-password' }"
+            />
+          </NFormItem>
+          <NButton type="primary" block attr-type="submit" :loading="submitting"
+            >注册并登录</NButton
+          >
+        </NForm>
       </template>
 
       <template v-else>
         <button class="back-link" @click="switchTo('password')">
           <NIcon><ArrowLeft /></NIcon> 返回登录
         </button>
-        <h2 class="reset-title">重置密码</h2>
+        <h2 class="panel-title">重置密码</h2>
         <NForm
           ref="resetRef"
           :model="{ email, ...resetForm }"
@@ -419,9 +403,6 @@ function switchTo(next: Mode) {
   margin-top: 12px;
   font-size: 13px;
 }
-.form-links.center {
-  justify-content: center;
-}
 .form-links a {
   color: var(--ul-accent);
   text-decoration: none;
@@ -443,7 +424,7 @@ function switchTo(next: Mode) {
 .back-link:hover {
   color: var(--ul-text);
 }
-.reset-title {
+.panel-title {
   margin: 12px 0 16px;
   font-size: 18px;
 }

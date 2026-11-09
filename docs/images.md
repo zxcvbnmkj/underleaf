@@ -29,15 +29,15 @@
 
 | 环境 | 上传目录 | 谁提供 `/uploads/` 访问 |
 |---|---|---|
-| 本地开发 | 仓库根目录下的 `uploads/`（已加入 `.gitignore`） | 后端（Vite 开发服务器把 `/uploads` 代理到后端） |
-| 服务器 | `/home/ubuntu/servers/underleaf/shared/uploads/` | Nginx 直接读取磁盘 |
+| 本地开发 | `backend/.env` 中 `UPLOAD_DIR` 指定的目录，未指定时为仓库根目录下的 `uploads/`（已加入 `.gitignore`） | 后端（Vite 开发服务器把 `/uploads` 代理到后端） |
+| 服务器 | `/home/ubuntu/data/underleaf/uploads/` | Nginx 直接读取磁盘 |
 
-服务器上通过 `shared/.env` 中的 `UPLOAD_DIR` 指定上传目录。它在 `shared/` 下，与每次部署的版本目录无关，**部署和回滚都不会影响图片**。
+服务器上通过 `/home/ubuntu/data/underleaf/.env` 中的 `UPLOAD_DIR` 指定上传目录。它在数据目录下，而部署目录 `/home/ubuntu/servers/underleaf` 每次部署都会整个清空重建，**图片不能放在部署目录中**。
 
 服务器上的目录结构：
 
 ```
-/home/ubuntu/servers/underleaf/shared/uploads/
+/home/ubuntu/data/underleaf/uploads/
 └── images/
     └── 2026/
         └── 11/
@@ -47,18 +47,18 @@
 
 数据库 `image` 表记录每张图片：`path`（相对上传目录的路径）、`mime`、`size`、`user_id`（登录功能完成后记录上传者）、`created_at`。
 
-## 服务器配置（首次启用图片功能时）
+## 服务器配置（已完成，2026-11-09）
 
-1. 创建目录并在 `shared/.env` 中指定：
+1. 创建目录并在 `.env` 中指定：
    ```bash
-   mkdir -p /home/ubuntu/servers/underleaf/shared/uploads
-   echo 'UPLOAD_DIR=/home/ubuntu/servers/underleaf/shared/uploads' >> /home/ubuntu/servers/underleaf/shared/.env
+   mkdir -p /home/ubuntu/data/underleaf/uploads
+   echo 'UPLOAD_DIR=/home/ubuntu/data/underleaf/uploads' >> /home/ubuntu/data/underleaf/.env
    ```
 2. 在 Nginx 配置（`/www/server/panel/vhost/nginx/underleaf.conf`）中加入：
    ```nginx
    # 上传的图片：文件名随机且不会被覆盖，可以长期缓存
    location ^~ /uploads/ {
-       alias /home/ubuntu/servers/underleaf/shared/uploads/;
+       alias /home/ubuntu/data/underleaf/uploads/;
        expires 30d;
        add_header Cache-Control "public, immutable";
        add_header X-Content-Type-Options nosniff;   # 禁止浏览器按内容猜测类型
@@ -74,7 +74,7 @@
 
 ```bash
 # 图片：增量同步到备份位置（可以是另一台机器）
-rsync -a /home/ubuntu/servers/underleaf/shared/uploads/ <备份位置>/underleaf-uploads/
+rsync -a /home/ubuntu/data/underleaf/uploads/ <备份位置>/underleaf-uploads/
 
 # 数据库
 mysqldump -uroot -p --single-transaction --default-character-set=utf8mb4 underleaf > underleaf-$(date +%F).sql
@@ -87,7 +87,7 @@ mysqldump -uroot -p --single-transaction --default-character-set=utf8mb4 underle
 1. **在新服务器上部署好 Underleaf**（按 [pipeline.md](pipeline.md) 的服务器准备），先不对外开放
 2. **停止旧服务器上的写入**（避免迁移期间有新上传或新笔记）：
    ```bash
-   bash /home/ubuntu/servers/underleaf/current/deploy/restart.sh stop
+   bash /home/ubuntu/servers/underleaf/restart.sh stop
    ```
 3. **迁移数据库**：
    ```bash
@@ -98,17 +98,17 @@ mysqldump -uroot -p --single-transaction --default-character-set=utf8mb4 underle
    ```
 4. **迁移图片**（在新服务器上执行，从旧服务器拉取）：
    ```bash
-   rsync -av ubuntu@<旧服务器 IP>:/home/ubuntu/servers/underleaf/shared/uploads/ \
-         /home/ubuntu/servers/underleaf/shared/uploads/
+   rsync -av ubuntu@<旧服务器 IP>:/home/ubuntu/data/underleaf/uploads/ \
+         /home/ubuntu/data/underleaf/uploads/
    ```
 5. **核对**：
    ```bash
    # 文件数量应与旧服务器一致
-   find /home/ubuntu/servers/underleaf/shared/uploads -type f | wc -l
+   find /home/ubuntu/data/underleaf/uploads -type f | wc -l
    # 数据库中的图片记录数
    mysql -uroot -p -N -e "SELECT COUNT(*) FROM underleaf.image"
    # 预览清理脚本：「被引用」的数量应与旧服务器一致，且没有「文件已不存在」的记录
-   cd /home/ubuntu/servers/underleaf/current/backend && ~/.local/bin/pdm run python -m scripts.cleanup_images
+   cd /home/ubuntu/servers/underleaf/backend && ~/.local/bin/pdm run python -m scripts.cleanup_images
    ```
 6. **启动新服务器上的后端，切换访问地址**（修改域名解析，或告知新的 IP），打开几篇带图片的笔记和分享链接确认显示正常
 
@@ -127,7 +127,7 @@ WHERE content LIKE '%http://124.223.10.25:10002/uploads/%';
 
 ### 以后改用对象存储（OSS / COS）时
 
-1. 把 `shared/uploads/` 整个上传到对象存储，保持相同的目录结构
+1. 把 `/home/ubuntu/data/underleaf/uploads/` 整个上传到对象存储，保持相同的目录结构
 2. 二选一：
    - **不改笔记**（推荐）：Nginx 中把 `/uploads/` 反向代理到对象存储的地址
    - **改笔记**：用上面的 `REPLACE` 把 `/uploads/` 替换为对象存储的完整地址；之后换存储服务商还要再改一次
@@ -137,7 +137,7 @@ WHERE content LIKE '%http://124.223.10.25:10002/uploads/%';
 把图片从笔记中删掉后，图片文件不会自动删除。需要时手动执行清理脚本 `backend/scripts/cleanup_images.py`：
 
 ```bash
-cd /home/ubuntu/servers/underleaf/current/backend
+cd /home/ubuntu/servers/underleaf/backend
 ~/.local/bin/pdm run python -m scripts.cleanup_images                  # 预览：只列出将要删除的图片
 ~/.local/bin/pdm run python -m scripts.cleanup_images --apply          # 确认后删除
 ~/.local/bin/pdm run python -m scripts.cleanup_images --min-age-days 30   # 只清理 30 天前上传的

@@ -1,4 +1,4 @@
-import type { AccessToken, CreatedAccessToken, GitInfo } from '@/types'
+import type { AccessToken, GitInfo } from '@/types'
 import { http } from './http'
 
 export const gitApi = {
@@ -6,6 +6,6 @@ export const gitApi = {
   listTokens: () => http.get<AccessToken[]>('/tokens'),
   /** expiresInDays 为 null 表示永不过期 */
   createToken: (name: string, expiresInDays: number | null) =>
-    http.post<CreatedAccessToken>('/tokens', { name, expiresInDays }),
+    http.post<AccessToken>('/tokens', { name, expiresInDays }),
   revokeToken: (id: number) => http.delete<void>(`/tokens/${id}`),
 }

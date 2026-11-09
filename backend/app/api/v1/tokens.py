@@ -8,8 +8,15 @@ from sqlalchemy import func, select
 from app.api.deps import CurrentUser, Session
 from app.core.errors import AppError
 from app.models import AccessToken
-from app.schemas.tokens import GitInfoOut, TokenCreate, TokenCreated, TokenOut
-from app.services.access_tokens import generate_token, hash_token, is_active, utcnow
+from app.schemas.tokens import GitInfoOut, TokenCreate, TokenOut
+from app.services.access_tokens import (
+    decrypt_token,
+    encrypt_token,
+    generate_token,
+    hash_token,
+    is_active,
+    utcnow,
+)
 from app.services.git_sync import clone_path
 
 router = APIRouter(tags=["git"])
@@ -23,20 +30,32 @@ async def git_info(user: CurrentUser) -> GitInfoOut:
     return GitInfoOut(clone_path=clone_path(user.id), username=user.nickname)
 
 
+def _out(record: AccessToken) -> TokenOut:
+    return TokenOut(
+        id=record.id,
+        name=record.name,
+        last_chars=record.last_chars,
+        token=decrypt_token(record.token_encrypted),
+        expires_at=record.expires_at,
+        last_used_at=record.last_used_at,
+        created_at=record.created_at,
+    )
+
+
 @router.get("/tokens", response_model=list[TokenOut])
-async def list_tokens(user: CurrentUser, session: Session) -> list[AccessToken]:
-    """有效的令牌（不含已吊销和已过期的），最新的在前。"""
+async def list_tokens(user: CurrentUser, session: Session) -> list[TokenOut]:
+    """有效的令牌（不含已吊销和已过期的），最新的在前，包含完整令牌。"""
     rows = await session.scalars(
         select(AccessToken)
         .where(AccessToken.user_id == user.id, AccessToken.revoked_at.is_(None))
         .order_by(AccessToken.id.desc())
     )
     now = utcnow()
-    return [t for t in rows if is_active(t, now)]
+    return [_out(t) for t in rows if is_active(t, now)]
 
 
-@router.post("/tokens", response_model=TokenCreated)
-async def create_token(body: TokenCreate, user: CurrentUser, session: Session) -> TokenCreated:
+@router.post("/tokens", response_model=TokenOut)
+async def create_token(body: TokenCreate, user: CurrentUser, session: Session) -> TokenOut:
     name = body.name.strip()
     if not name:
         raise AppError(422, "invalid_name", "请填写令牌名称")
@@ -60,20 +79,13 @@ async def create_token(body: TokenCreate, user: CurrentUser, session: Session) -
         user_id=user.id,
         name=name,
         token_hash=hash_token(token),
+        token_encrypted=encrypt_token(token),
         last_chars=token[-4:],
         expires_at=now + timedelta(days=body.expires_in_days) if body.expires_in_days else None,
     )
     session.add(record)
     await session.commit()
-    return TokenCreated(
-        id=record.id,
-        name=record.name,
-        last_chars=record.last_chars,
-        expires_at=record.expires_at,
-        last_used_at=None,
-        created_at=record.created_at,
-        token=token,
-    )
+    return _out(record)
 
 
 @router.delete("/tokens/{token_id}", status_code=204)

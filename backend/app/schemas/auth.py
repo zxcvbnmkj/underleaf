@@ -45,7 +45,6 @@ class SendCodeIn(Schema):
 
 class RegisterIn(Schema):
     email: Email
-    code: Code
     nickname: Nickname
     password: Password
 

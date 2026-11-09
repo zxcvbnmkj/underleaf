@@ -1,6 +1,8 @@
 """个人访问令牌：生成、校验、HTTP Basic 认证（`git clone` 时作为密码使用）。
 
-- 令牌格式 `ulp_` + 43 个随机字符（32 字节），数据库只存 SHA-256 哈希
+- 令牌格式 `ulp_` + 43 个随机字符（32 字节）
+- 校验时按 SHA-256 哈希查找；另存一份加密的令牌供用户在网页上随时查看。加密密钥由 JWT_SECRET
+  派生（HKDF），数据库单独泄露时拿不到可用的令牌；更换 JWT_SECRET 后只是无法再显示，令牌照常可用
 - 不直接使用登录密码：令牌泄露后可以单独吊销，也不会暴露登录密码
 """
 
@@ -9,10 +11,15 @@ import binascii
 import hashlib
 import secrets
 from datetime import UTC, datetime
+from functools import lru_cache
 
+from cryptography.fernet import Fernet, InvalidToken
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import get_settings
 from app.models import AccessToken, User
 
 PREFIX = "ulp_"
@@ -24,6 +31,28 @@ def generate_token() -> str:
 
 def hash_token(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
+
+
+@lru_cache
+def _fernet(secret: str) -> Fernet:
+    key = HKDF(
+        algorithm=hashes.SHA256(), length=32, salt=None, info=b"underleaf-access-token"
+    ).derive(secret.encode())
+    return Fernet(base64.urlsafe_b64encode(key))
+
+
+def encrypt_token(token: str) -> str:
+    return _fernet(get_settings().jwt_secret).encrypt(token.encode()).decode()
+
+
+def decrypt_token(encrypted: str | None) -> str | None:
+    """解密失败（如更换过 JWT_SECRET）时返回 None。"""
+    if not encrypted:
+        return None
+    try:
+        return _fernet(get_settings().jwt_secret).decrypt(encrypted.encode()).decode()
+    except InvalidToken:
+        return None
 
 
 def utcnow() -> datetime:

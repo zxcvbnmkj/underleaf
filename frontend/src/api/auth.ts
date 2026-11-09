@@ -3,7 +3,6 @@ import { http } from './http'
 
 export interface RegisterInput {
   email: string
-  code: string
   nickname: string
   password: string
 }
