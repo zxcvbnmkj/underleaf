@@ -16,8 +16,10 @@ NAMING_CONVENTION = {
 TABLE_ARGS: dict[str, Any] = {
     "mysql_engine": "InnoDB",
     "mysql_charset": "utf8mb4",
-    # 不区分大小写：Note 与 note 视为重名，与 Windows / macOS 文件系统一致
-    "mysql_collate": "utf8mb4_0900_ai_ci",
+    # 不区分大小写：Note 与 note 视为重名，与 Windows / macOS 文件系统一致。
+    # 服务器为 MySQL 5.7，没有 utf8mb4_0900_ai_ci；unicode_ci / general_ci 会把所有 emoji
+    # 视为同一个字符（「笔记🍣」与「笔记🍺」重名），unicode_520_ci 能正确区分。MySQL 8 同样支持
+    "mysql_collate": "utf8mb4_unicode_520_ci",
 }
 
 # 时间统一存 UTC（连接时已设置 time_zone = '+00:00'），精确到毫秒

@@ -2,17 +2,9 @@ import { ApiError } from './errors'
 
 export { ApiError }
 
-export const USE_MOCK = import.meta.env.VITE_USE_MOCK === 'true'
-
 type Method = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
 
 export async function request<T>(method: Method, path: string, body?: unknown): Promise<T> {
-  if (USE_MOCK) {
-    // 按需加载，正式构建（VITE_USE_MOCK 不为 true）时不会打包 mock 代码
-    const { mockRequest } = await import('./mock')
-    return mockRequest<T>(method, path, body)
-  }
-
   let res: Response
   try {
     res = await fetch(`/api/v1${path}`, {

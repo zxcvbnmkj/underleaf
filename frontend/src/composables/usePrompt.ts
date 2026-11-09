@@ -32,10 +32,13 @@ export function usePrompt() {
             value: value.value,
             placeholder: opts.placeholder,
             autofocus: true,
-            maxlength: 100,
+            maxlength: 80,
             'onUpdate:value': (v: string) => (value.value = v),
             onKeydown: (e: KeyboardEvent) => {
               if (e.key === 'Enter' && !e.isComposing && value.value.trim()) {
+                // 必须阻止默认行为：对话框关闭后焦点回到触发它的按钮上，
+                // 这次回车随后的按键事件会落在按钮上，再次点击它、又弹出一个对话框
+                e.preventDefault()
                 finish(value.value.trim())
                 d.destroy()
               }

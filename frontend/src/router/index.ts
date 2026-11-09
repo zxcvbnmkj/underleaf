@@ -12,11 +12,10 @@ const router = createRouter({
       meta: { requiresAuth: true },
     },
     {
-      // PDF 导出的打印页（浏览器打印和后端 Playwright 共用）
-      path: '/print/:noteId(\\d+)',
-      name: 'print',
-      component: () => import('@/views/PrintView.vue'),
-      meta: { requiresAuth: true },
+      // PDF 导出渲染页：由后端无头 Chromium 打开，内容由后端注入，不需要登录
+      path: '/export/render',
+      name: 'export-render',
+      component: () => import('@/views/ExportRenderView.vue'),
     },
     {
       path: '/login',

@@ -2,8 +2,6 @@
 import { computed, onBeforeUnmount, ref } from 'vue'
 import { NButton, useMessage } from 'naive-ui'
 import { authApi } from '@/api/auth'
-import { USE_MOCK } from '@/api/http'
-import { MOCK_CODE } from '@/api/mock/constants'
 import type { EmailCodePurpose } from '@/types'
 import { EMAIL_RE } from '@/utils/format'
 
@@ -25,9 +23,7 @@ async function send() {
   sending.value = true
   try {
     await authApi.sendEmailCode(props.email.trim(), props.purpose)
-    message.success(USE_MOCK ? `演示模式：验证码为 ${MOCK_CODE}` : '验证码已发送，请查收邮件', {
-      duration: USE_MOCK ? 6000 : 3000,
-    })
+    message.success('验证码已发送，请查收邮件')
     countdown.value = 60
     clearInterval(timer)
     timer = setInterval(() => {

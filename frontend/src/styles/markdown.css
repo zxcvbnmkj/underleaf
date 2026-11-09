@@ -39,6 +39,89 @@
   font-size: 1.08em;
 }
 
+/* ---------- 悬停标题时显示级别标记（# / ## …） ----------
+ * 放在标题左侧的留白中，与标题第一行垂直居中；只在有鼠标的设备上生效，打印 / PDF 中不显示。
+ * 两个长度先在标题上用 em 声明，借助 @property 换算成像素后再传给伪元素，
+ * 这样伪元素虽然字号不同，也能准确对齐标题的第一行。 */
+@property --ul-heading-line {
+  syntax: '<length>';
+  inherits: true;
+  initial-value: 0px;
+}
+@property --ul-heading-offset {
+  syntax: '<length>';
+  inherits: true;
+  initial-value: 0px;
+}
+@media (hover: hover) {
+  .markdown-body :is(h1, h2, h3, h4, h5, h6) {
+    position: relative;
+    --ul-heading-line: 1.35em; /* 与标题的 line-height 一致 */
+    --ul-heading-offset: 0px;
+  }
+  .markdown-body h2 {
+    --ul-heading-offset: 1em; /* 与 h2 的 padding-top 一致 */
+  }
+  .markdown-body > div > h2:first-child {
+    --ul-heading-offset: 0px;
+  }
+  .markdown-body :is(h1, h2, h3, h4, h5, h6)::before {
+    position: absolute;
+    top: var(--ul-heading-offset);
+    right: 100%;
+    padding-right: 0.35em; /* 间距随字号变化，大标题留得更开 */
+    line-height: var(--ul-heading-line);
+    font-family: var(--ul-font-mono);
+    /* 随标题字号缩放（标题的 75%），小标题不低于 12px */
+    font-size: max(12px, 0.75em);
+    font-weight: 400;
+    /* 收紧字距：最长的 ###### 也要放进预览区 48px 的左侧留白 */
+    letter-spacing: -0.08em;
+    color: var(--ul-text-3);
+    white-space: nowrap;
+    opacity: 0;
+    transition: opacity 0.15s;
+    pointer-events: none;
+    user-select: none;
+  }
+  /* 「/ ''」为替代文本：读屏软件不会把标记念出来 */
+  .markdown-body h1::before {
+    content: '#' / '';
+  }
+  .markdown-body h2::before {
+    content: '##' / '';
+  }
+  .markdown-body h3::before {
+    content: '###' / '';
+  }
+  .markdown-body h4::before {
+    content: '####' / '';
+  }
+  .markdown-body h5::before {
+    content: '#####' / '';
+  }
+  .markdown-body h6::before {
+    content: '######' / '';
+  }
+  .markdown-body :is(h1, h2, h3, h4, h5, h6):hover::before {
+    opacity: 1;
+  }
+}
+
+/* 从目录跳转后，目标标题短暂高亮 */
+.markdown-body .outline-flash {
+  animation: ul-outline-flash 1.5s ease-out;
+}
+@keyframes ul-outline-flash {
+  0%,
+  30% {
+    background: var(--ul-accent-soft);
+  }
+  100% {
+    background: transparent;
+  }
+}
+
 .markdown-body p,
 .markdown-body ul,
 .markdown-body ol,
@@ -252,6 +335,9 @@ html.dark .markdown-body .shiki span {
   .markdown-body h5,
   .markdown-body h6 {
     break-after: avoid;
+  }
+  .markdown-body :is(h1, h2, h3, h4, h5, h6)::before {
+    content: none;
   }
   .markdown-body .code-block,
   .markdown-body .mermaid-block,

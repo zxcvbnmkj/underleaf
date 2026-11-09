@@ -46,7 +46,7 @@ def upgrade() -> None:
         sa.UniqueConstraint("email", name=op.f("uq_user_email")),
         sa.UniqueConstraint("nickname", name=op.f("uq_user_nickname")),
         mysql_charset="utf8mb4",
-        mysql_collate="utf8mb4_0900_ai_ci",
+        mysql_collate="utf8mb4_unicode_520_ci",
         mysql_engine="InnoDB",
     )
     op.create_table(
@@ -84,7 +84,7 @@ def upgrade() -> None:
             "user_id", "parent_key", "name", name=op.f("uq_folder_user_id_parent_key_name")
         ),
         mysql_charset="utf8mb4",
-        mysql_collate="utf8mb4_0900_ai_ci",
+        mysql_collate="utf8mb4_unicode_520_ci",
         mysql_engine="InnoDB",
     )
     op.create_table(
@@ -127,7 +127,7 @@ def upgrade() -> None:
             "user_id", "folder_key", "title", name=op.f("uq_note_user_id_folder_key_title")
         ),
         mysql_charset="utf8mb4",
-        mysql_collate="utf8mb4_0900_ai_ci",
+        mysql_collate="utf8mb4_unicode_520_ci",
         mysql_engine="InnoDB",
     )
     # ### end Alembic commands ###

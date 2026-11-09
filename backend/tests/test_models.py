@@ -132,3 +132,10 @@ async def test_delete_folder_cascades(session: AsyncSession) -> None:
     assert await session.scalar(select(func.count()).select_from(Folder)) == 0
     titles = (await session.scalars(select(Note.title))).all()
     assert titles == ["keep"]
+
+
+async def test_titles_with_different_emoji_are_distinct(session: AsyncSession) -> None:
+    """utf8mb4_unicode_ci / general_ci 会把所有 emoji 视为同一字符，unicode_520_ci 不会。"""
+    user = await make_user(session)
+    session.add_all([Note(user_id=user.id, title="笔记🍣"), Note(user_id=user.id, title="笔记🍺")])
+    await session.commit()

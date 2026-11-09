@@ -2,7 +2,6 @@
 import { ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
-  NAlert,
   NButton,
   NForm,
   NFormItem,
@@ -17,8 +16,6 @@ import {
 } from 'naive-ui'
 import { ArrowLeft, Moon, Sun } from 'lucide-vue-next'
 import { authApi } from '@/api/auth'
-import { USE_MOCK } from '@/api/http'
-import { MOCK_CODE, MOCK_DEMO_ACCOUNT } from '@/api/mock/constants'
 import { useAuthStore } from '@/stores/auth'
 import { useTheme } from '@/composables/useTheme'
 import BrandLogo from '@/components/common/BrandLogo.vue'
@@ -32,21 +29,26 @@ const message = useMessage()
 const auth = useAuthStore()
 const { isDark, toggle: toggleTheme } = useTheme()
 
-type Mode = 'code' | 'password' | 'reset'
-const tab = ref<'code' | 'password'>('code')
-const mode = ref<Mode>('code')
+type Tab = 'password' | 'code' | 'register'
+type Mode = Tab | 'reset'
+const tab = ref<Tab>(route.query.tab === 'register' ? 'register' : 'password')
+const mode = ref<Mode>(tab.value)
 const submitting = ref(false)
 
-// 三个表单共享邮箱，切换方式时不用重复输入
+// 邮箱在各表单间共享，切换方式时不用重复输入；密码登录的账号可以是邮箱或昵称
 const email = ref('')
+const pwdForm = ref({ account: '', password: '' })
 const codeForm = ref({ code: '' })
-const pwdForm = ref({ password: '' })
+const registerForm = ref({ code: '', nickname: '', password: '', confirm: '' })
 const resetForm = ref({ code: '', newPassword: '', confirm: '' })
 
-const codeRef = ref<FormInst>()
 const pwdRef = ref<FormInst>()
+const codeRef = ref<FormInst>()
+const registerRef = ref<FormInst>()
 const resetRef = ref<FormInst>()
 
+// 校验规则与后端一致（backend/app/schemas/auth.py）
+const NICKNAME_RE = /^[A-Za-z0-9_\-\u3400-\u4dbf\u4e00-\u9fff]{2,20}$/
 const emailRule = {
   trigger: 'blur',
   validator: () => {
@@ -59,23 +61,38 @@ const codeRule = [
   { required: true, message: '请输入验证码', trigger: 'blur' },
   { pattern: /^\d{6}$/, message: '验证码为 6 位数字', trigger: 'blur' },
 ]
-const codeRules: FormRules = { email: emailRule, code: codeRule }
+const newPasswordRule = [
+  { required: true, message: '请输入密码', trigger: 'blur' },
+  { min: 8, message: '密码至少 8 个字符', trigger: 'blur' },
+]
+const confirmRule = (get: () => string) => ({
+  trigger: ['blur', 'input'],
+  validator: (_r: unknown, v: string) => (v === get() ? true : new Error('两次输入的密码不一致')),
+})
+
 const pwdRules: FormRules = {
-  email: emailRule,
+  account: { required: true, message: '请输入邮箱或昵称', trigger: 'blur' },
   password: { required: true, message: '请输入密码', trigger: 'blur' },
+}
+const codeRules: FormRules = { email: emailRule, code: codeRule }
+const registerRules: FormRules = {
+  email: emailRule,
+  code: codeRule,
+  nickname: {
+    trigger: 'blur',
+    validator: (_r: unknown, v: string) =>
+      NICKNAME_RE.test(v.trim())
+        ? true
+        : new Error('昵称为 2～20 个字符，只能包含中文、字母、数字、_ 和 -'),
+  },
+  password: newPasswordRule,
+  confirm: confirmRule(() => registerForm.value.password),
 }
 const resetRules: FormRules = {
   email: emailRule,
   code: codeRule,
-  newPassword: [
-    { required: true, message: '请输入新密码', trigger: 'blur' },
-    { min: 8, message: '密码至少 8 位', trigger: 'blur' },
-  ],
-  confirm: {
-    trigger: ['blur', 'input'],
-    validator: (_r, v: string) =>
-      v === resetForm.value.newPassword ? true : new Error('两次输入的密码不一致'),
-  },
+  newPassword: newPasswordRule,
+  confirm: confirmRule(() => resetForm.value.newPassword),
 }
 
 async function run(form: FormInst | undefined, action: () => Promise<void>) {
@@ -100,15 +117,29 @@ function onLoggedIn(user: User) {
   router.replace(redirect.startsWith('/') && !redirect.startsWith('//') ? redirect : '/notes')
 }
 
+const loginWithPassword = () =>
+  run(pwdRef.value, async () =>
+    onLoggedIn(
+      await authApi.loginWithPassword(pwdForm.value.account.trim(), pwdForm.value.password),
+    ),
+  )
+
 const loginWithCode = () =>
   run(codeRef.value, async () =>
     onLoggedIn(await authApi.loginWithCode(email.value.trim(), codeForm.value.code)),
   )
 
-const loginWithPassword = () =>
-  run(pwdRef.value, async () =>
-    onLoggedIn(await authApi.loginWithPassword(email.value.trim(), pwdForm.value.password)),
-  )
+const register = () =>
+  run(registerRef.value, async () => {
+    const user = await authApi.register({
+      email: email.value.trim(),
+      code: registerForm.value.code,
+      nickname: registerForm.value.nickname.trim(),
+      password: registerForm.value.password,
+    })
+    message.success(`注册成功，欢迎你，${user.nickname}`)
+    onLoggedIn(user)
+  })
 
 const resetPassword = () =>
   run(resetRef.value, async () => {
@@ -118,21 +149,17 @@ const resetPassword = () =>
       resetForm.value.newPassword,
     )
     message.success('密码已重置，请使用新密码登录')
-    pwdForm.value.password = ''
+    pwdForm.value = { account: email.value.trim(), password: '' }
     resetForm.value = { code: '', newPassword: '', confirm: '' }
-    mode.value = 'password'
-    tab.value = 'password'
+    switchTo('password')
   })
 
-function onTabChange(v: 'code' | 'password') {
-  tab.value = v
-  mode.value = v
-}
-
-function fillDemo() {
-  email.value = MOCK_DEMO_ACCOUNT.email
-  pwdForm.value.password = MOCK_DEMO_ACCOUNT.password
-  onTabChange('password')
+function switchTo(next: Mode) {
+  // 已在密码登录中填了邮箱时，带到其他表单
+  if (next !== 'password' && !email.value && pwdForm.value.account.includes('@'))
+    email.value = pwdForm.value.account.trim()
+  if (next !== 'reset') tab.value = next
+  mode.value = next
 }
 </script>
 
@@ -152,20 +179,45 @@ function fillDemo() {
         <p class="tagline">左边写 Markdown，右边看效果，笔记随时随地同步</p>
       </div>
 
-      <NAlert v-if="USE_MOCK" type="warning" :bordered="false" class="mock-alert">
-        演示模式（未连接后端）：验证码固定为 <b>{{ MOCK_CODE }}</b
-        >；
-        <a href="#" @click.prevent="fillDemo">使用演示账号密码登录</a>
-      </NAlert>
-
       <template v-if="mode !== 'reset'">
         <NTabs
           :value="tab"
           type="line"
           justify-content="space-evenly"
           animated
-          @update:value="onTabChange"
+          @update:value="switchTo"
         >
+          <NTabPane name="password" tab="密码登录">
+            <NForm
+              ref="pwdRef"
+              :model="pwdForm"
+              :rules="pwdRules"
+              @submit.prevent="loginWithPassword"
+            >
+              <NFormItem path="account" :show-label="false">
+                <NInput
+                  v-model:value="pwdForm.account"
+                  placeholder="邮箱或昵称"
+                  :input-props="{ autocomplete: 'username' }"
+                />
+              </NFormItem>
+              <NFormItem path="password" :show-label="false">
+                <NInput
+                  v-model:value="pwdForm.password"
+                  type="password"
+                  show-password-on="click"
+                  placeholder="密码"
+                  :input-props="{ autocomplete: 'current-password' }"
+                />
+              </NFormItem>
+              <NButton type="primary" block attr-type="submit" :loading="submitting">登录</NButton>
+              <div class="form-links">
+                <a href="#" @click.prevent="switchTo('reset')">忘记密码？</a>
+                <a href="#" @click.prevent="switchTo('register')">没有账号？注册</a>
+              </div>
+            </NForm>
+          </NTabPane>
+
           <NTabPane name="code" tab="验证码登录">
             <NForm
               ref="codeRef"
@@ -191,40 +243,69 @@ function fillDemo() {
                   <SendCodeButton :email="email" purpose="login" />
                 </NInputGroup>
               </NFormItem>
-              <NButton type="primary" block attr-type="submit" :loading="submitting"
-                >登录 / 注册</NButton
-              >
-              <p class="form-tip">未注册的邮箱验证后将自动创建账号</p>
+              <NButton type="primary" block attr-type="submit" :loading="submitting">登录</NButton>
+              <div class="form-links center">
+                <a href="#" @click.prevent="switchTo('register')">还没有账号？注册</a>
+              </div>
             </NForm>
           </NTabPane>
 
-          <NTabPane name="password" tab="密码登录">
+          <NTabPane name="register" tab="注册">
             <NForm
-              ref="pwdRef"
-              :model="{ email, ...pwdForm }"
-              :rules="pwdRules"
-              @submit.prevent="loginWithPassword"
+              ref="registerRef"
+              :model="{ email, ...registerForm }"
+              :rules="registerRules"
+              @submit.prevent="register"
             >
               <NFormItem path="email" :show-label="false">
                 <NInput
                   v-model:value="email"
                   placeholder="邮箱"
-                  :input-props="{ type: 'email', autocomplete: 'username' }"
+                  :input-props="{ type: 'email', autocomplete: 'email' }"
+                />
+              </NFormItem>
+              <NFormItem path="code" :show-label="false">
+                <NInputGroup>
+                  <NInput
+                    v-model:value="registerForm.code"
+                    placeholder="6 位验证码"
+                    maxlength="6"
+                    :input-props="{ inputmode: 'numeric', autocomplete: 'one-time-code' }"
+                  />
+                  <SendCodeButton :email="email" purpose="register" />
+                </NInputGroup>
+              </NFormItem>
+              <NFormItem path="nickname" :show-label="false">
+                <NInput
+                  v-model:value="registerForm.nickname"
+                  placeholder="昵称（2～20 个字符，可用于登录）"
+                  maxlength="20"
+                  :input-props="{ autocomplete: 'nickname' }"
                 />
               </NFormItem>
               <NFormItem path="password" :show-label="false">
                 <NInput
-                  v-model:value="pwdForm.password"
+                  v-model:value="registerForm.password"
                   type="password"
                   show-password-on="click"
-                  placeholder="密码"
-                  :input-props="{ autocomplete: 'current-password' }"
+                  placeholder="密码（至少 8 个字符）"
+                  :input-props="{ autocomplete: 'new-password' }"
                 />
               </NFormItem>
-              <NButton type="primary" block attr-type="submit" :loading="submitting">登录</NButton>
-              <div class="form-links">
-                <a href="#" @click.prevent="mode = 'reset'">忘记密码？</a>
-                <a href="#" @click.prevent="onTabChange('code')">没有密码？用验证码登录</a>
+              <NFormItem path="confirm" :show-label="false">
+                <NInput
+                  v-model:value="registerForm.confirm"
+                  type="password"
+                  show-password-on="click"
+                  placeholder="确认密码"
+                  :input-props="{ autocomplete: 'new-password' }"
+                />
+              </NFormItem>
+              <NButton type="primary" block attr-type="submit" :loading="submitting"
+                >注册并登录</NButton
+              >
+              <div class="form-links center">
+                <a href="#" @click.prevent="switchTo('password')">已有账号？登录</a>
               </div>
             </NForm>
           </NTabPane>
@@ -232,7 +313,7 @@ function fillDemo() {
       </template>
 
       <template v-else>
-        <button class="back-link" @click="mode = 'password'">
+        <button class="back-link" @click="switchTo('password')">
           <NIcon><ArrowLeft /></NIcon> 返回登录
         </button>
         <h2 class="reset-title">重置密码</h2>
@@ -265,7 +346,7 @@ function fillDemo() {
               v-model:value="resetForm.newPassword"
               type="password"
               show-password-on="click"
-              placeholder="新密码（至少 8 位）"
+              placeholder="新密码（至少 8 个字符）"
               :input-props="{ autocomplete: 'new-password' }"
             />
           </NFormItem>
@@ -329,28 +410,17 @@ function fillDemo() {
   font-size: 13px;
   color: var(--ul-text-2);
 }
-.mock-alert {
-  margin-bottom: 12px;
-  font-size: 12px;
-}
-.mock-alert a {
-  color: inherit;
-  text-decoration: underline;
-}
 .login-card :deep(.n-tabs-pane-wrapper) {
   padding-top: 12px;
-}
-.form-tip {
-  margin: 10px 0 0;
-  text-align: center;
-  font-size: 12px;
-  color: var(--ul-text-3);
 }
 .form-links {
   display: flex;
   justify-content: space-between;
   margin-top: 12px;
   font-size: 13px;
+}
+.form-links.center {
+  justify-content: center;
 }
 .form-links a {
   color: var(--ul-accent);

@@ -8,3 +8,12 @@ __pycache__/
 # 环境变量（含密码），只提交 .env.example
 .env
 .venv/
+
+# 流水线打包产物（deploy/package.sh）
+release/
+
+# 本地开发时上传的图片
+uploads/
+
+# 本地开发时 Git 同步的裸仓库（数据库的镜像）
+git-repos/

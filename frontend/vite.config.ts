@@ -13,6 +13,8 @@ export default defineConfig({
     port: 5173,
     proxy: {
       '/api': 'http://localhost:8000',
+      // 上传的图片，服务器上由 Nginx 提供
+      '/uploads': 'http://localhost:8000',
     },
   },
 })

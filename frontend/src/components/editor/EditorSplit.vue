@@ -4,15 +4,23 @@ import MarkdownEditor from './MarkdownEditor.vue'
 import MarkdownPreview from './MarkdownPreview.vue'
 import { createScrollSync } from '@/composables/useScrollSync'
 
+/** edit 只在窄屏时由分栏模式自动切换而来，不作为可选模式 */
 export type ViewMode = 'split' | 'edit' | 'preview'
 
 const props = defineProps<{
   mode: ViewMode
   dark: boolean
   readonly?: boolean
+  uploadImage?: (file: File) => Promise<string>
 }>()
 const content = defineModel<string>({ required: true })
-const emit = defineEmits<{ save: [] }>()
+const emit = defineEmits<{
+  save: []
+  blur: []
+  imageError: [message: string]
+  /** 当前可见区域顶部对应的源码行号（用于目录高亮当前章节） */
+  visibleLine: [line: number]
+}>()
 
 const RATIO_KEY = 'underleaf-split-ratio'
 const ratio = ref(readRatio())
@@ -37,8 +45,15 @@ const sync = createScrollSync(() => previewPane.value)
 let source: 'editor' | 'preview' = 'editor'
 const setSource = (s: typeof source) => (source = s)
 
+/** 目录跳转后的短时间内不做互相同步：两侧已分别滚到精确位置，同步会因行号插值产生偏差 */
+let jumpUntil = 0
+const jumping = () => performance.now() < jumpUntil
+
 function onEditorScroll(line: number) {
-  if (props.mode !== 'split' || source !== 'editor') return
+  if (jumping()) return
+  if (props.mode === 'preview' || (props.mode === 'split' && source !== 'editor')) return
+  emit('visibleLine', line)
+  if (props.mode !== 'split') return
   const pane = previewPane.value
   if (!pane) return
   const scroller = editor.value?.scrollDOM
@@ -49,10 +64,32 @@ function onEditorScroll(line: number) {
 }
 
 function onPreviewScroll() {
-  if (props.mode !== 'split' || source !== 'preview') return
+  if (jumping()) return
+  if (props.mode === 'edit' || (props.mode === 'split' && source !== 'preview')) return
   const pane = previewPane.value
   if (!pane) return
-  editor.value?.scrollToLine(sync.lineForPreviewTop(pane.scrollTop, totalLines.value))
+  const line = sync.lineForPreviewTop(pane.scrollTop, totalLines.value)
+  emit('visibleLine', line)
+  if (props.mode === 'split') editor.value?.scrollToLine(line)
+}
+
+/** 跳转到源码第 line 行（从 0 开始）：编辑区和预览区一起滚动，预览中的目标短暂高亮 */
+function scrollToLine(line: number) {
+  jumpUntil = performance.now() + 400
+  if (props.mode !== 'preview') editor.value?.revealLine(line)
+  const pane = previewPane.value
+  if (props.mode !== 'edit' && pane) {
+    // 留出与编辑区相同的 12px 上边距
+    pane.scrollTop = Math.max(0, sync.previewTopForLine(line, totalLines.value) - 12)
+    const target = pane.querySelector<HTMLElement>(`[data-line="${line}"]`)
+    if (target) {
+      target.classList.remove('outline-flash')
+      void target.offsetWidth // 重新触发动画
+      target.classList.add('outline-flash')
+      setTimeout(() => target.classList.remove('outline-flash'), 1500)
+    }
+  }
+  emit('visibleLine', line)
 }
 
 // ---------- 拖拽分隔条 ----------
@@ -84,7 +121,7 @@ onMounted(() => {
 })
 onBeforeUnmount(() => resizeObserver?.disconnect())
 
-defineExpose({ focus: () => editor.value?.focus() })
+defineExpose({ focus: () => editor.value?.focus(), scrollToLine })
 </script>
 
 <template>
@@ -107,6 +144,9 @@ defineExpose({ focus: () => editor.value?.focus() })
         :readonly="readonly"
         @scroll="onEditorScroll"
         @save="emit('save')"
+        :upload-image="uploadImage"
+        @blur="emit('blur')"
+        @image-error="(m: string) => emit('imageError', m)"
       />
     </div>
     <div

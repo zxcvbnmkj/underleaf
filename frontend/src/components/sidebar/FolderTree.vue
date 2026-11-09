@@ -78,6 +78,12 @@ const selectedKeys = computed(() =>
   props.currentNoteId != null ? [noteKey(props.currentNoteId)] : [],
 )
 
+/** 点击笔记时打开；点击文件夹只切换展开（由 NTree 处理），不改变选中项 */
+function onSelect(_keys: string[], options: Array<TreeOption | null>) {
+  const node = options[0] as unknown as TreeNode | null
+  if (node?.type === 'note') openNote(node.id)
+}
+
 function openNote(id: number) {
   router.push({ name: 'workspace', params: { noteId: id } })
   emit('navigate')
@@ -127,15 +133,9 @@ const renderSuffix = ({ option }: { option: TreeOption }) => {
 const nodeProps = ({ option }: { option: TreeOption }) => {
   const node = option as unknown as TreeNode
   return {
-    onClick() {
-      if (node.type === 'note') openNote(node.id)
-      else {
-        const keys = expandedKeys.value
-        expandedKeys.value = keys.includes(node.key)
-          ? keys.filter((k) => k !== node.key)
-          : [...keys, node.key]
-      }
-    },
+    // 不在这里处理点击：NTree 会把 nodeProps 的 onClick 绑定在多个层级上，一次点击触发两次；
+    // 点击箭头时 NTree 自己也会切换展开状态。两者叠加会让展开 / 收起互相抵消。
+    // 展开由 NTree 的 expand-on-click 处理，打开笔记由 onSelect 处理
     onContextmenu(e: MouseEvent) {
       e.preventDefault()
       e.stopPropagation()
@@ -350,8 +350,9 @@ defineExpose({ newNote, newFolder })
         :render-suffix="renderSuffix"
         :node-props="nodeProps"
         :cancelable="false"
-        :expand-on-click="false"
+        expand-on-click
         @update:expanded-keys="(keys: string[]) => (expandedKeys = keys)"
+        @update:selected-keys="onSelect"
         @drop="onDrop"
       />
       <NEmpty v-else-if="store.loaded" description="还没有笔记" class="tree-empty">

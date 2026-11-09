@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { ref, watch } from 'vue'
 import {
   NButton,
   NForm,
@@ -17,7 +17,6 @@ const show = defineModel<boolean>('show', { required: true })
 const auth = useAuthStore()
 const message = useMessage()
 
-const hasPassword = computed(() => !!auth.user?.hasPassword)
 const form = ref({ oldPassword: '', newPassword: '', confirm: '' })
 const formRef = ref<FormInst>()
 const submitting = ref(false)
@@ -30,7 +29,7 @@ const rules: FormRules = {
   oldPassword: { required: true, message: '请输入原密码', trigger: 'blur' },
   newPassword: [
     { required: true, message: '请输入新密码', trigger: 'blur' },
-    { min: 8, message: '密码至少 8 位', trigger: 'blur' },
+    { min: 8, message: '密码至少 8 个字符', trigger: 'blur' },
   ],
   confirm: {
     trigger: ['blur', 'input'],
@@ -47,16 +46,9 @@ async function submit() {
   }
   submitting.value = true
   try {
-    const user = await authApi.changePassword(
-      form.value.newPassword,
-      hasPassword.value ? form.value.oldPassword : undefined,
-    )
+    const user = await authApi.changePassword(form.value.oldPassword, form.value.newPassword)
     auth.setUser(user)
-    message.success(
-      hasPassword.value
-        ? '密码已修改，其他设备需要重新登录'
-        : '密码设置成功，之后可以用邮箱 + 密码登录',
-    )
+    message.success('密码已修改，其他设备需要重新登录')
     show.value = false
   } catch (e) {
     message.error((e as Error).message)
@@ -70,13 +62,11 @@ async function submit() {
   <NModal
     v-model:show="show"
     preset="card"
-    :title="hasPassword ? '修改密码' : '设置密码'"
+    title="修改密码"
     style="width: min(420px, calc(100vw - 32px))"
     :bordered="false"
   >
-    <p v-if="!hasPassword" class="hint">
-      你目前通过邮箱验证码登录。设置密码后，也可以用邮箱 + 密码登录。
-    </p>
+    <p class="hint">修改后，其他设备上的登录会失效，需要用新密码重新登录。</p>
     <NForm
       ref="formRef"
       :model="form"
@@ -84,7 +74,7 @@ async function submit() {
       label-placement="top"
       @submit.prevent="submit"
     >
-      <NFormItem v-if="hasPassword" label="原密码" path="oldPassword">
+      <NFormItem label="原密码" path="oldPassword">
         <NInput v-model:value="form.oldPassword" type="password" show-password-on="click" />
       </NFormItem>
       <NFormItem label="新密码" path="newPassword">
@@ -92,7 +82,7 @@ async function submit() {
           v-model:value="form.newPassword"
           type="password"
           show-password-on="click"
-          placeholder="至少 8 位"
+          placeholder="至少 8 个字符"
         />
       </NFormItem>
       <NFormItem label="确认新密码" path="confirm">

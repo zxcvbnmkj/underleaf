@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { computed, h, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { NButton, NDrawer, NDropdown, NEmpty, NIcon, NTag, NTooltip, useMessage } from 'naive-ui'
+import { NButton, NDrawer, NDropdown, NEmpty, NIcon, NTooltip, useMessage } from 'naive-ui'
 import {
   FilePlus,
   FileText,
+  GitBranch,
   KeyRound,
+  UserPen,
   LogOut,
   Menu,
   Moon,
@@ -16,12 +18,14 @@ import {
 import FolderTree from '@/components/sidebar/FolderTree.vue'
 import NoteWorkspace from '@/components/editor/NoteWorkspace.vue'
 import PasswordModal from '@/components/common/PasswordModal.vue'
+import GitSyncModal from '@/components/common/GitSyncModal.vue'
 import BrandLogo from '@/components/common/BrandLogo.vue'
 import { useAuthStore } from '@/stores/auth'
+import { authApi } from '@/api/auth'
+import { usePrompt } from '@/composables/usePrompt'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useTheme } from '@/composables/useTheme'
 import { useMediaQuery } from '@/composables/useMediaQuery'
-import { USE_MOCK } from '@/api/http'
 import { formatRelative } from '@/utils/format'
 
 const route = useRoute()
@@ -72,29 +76,50 @@ onMounted(async () => {
 
 // ---------- 用户菜单 ----------
 const showPassword = ref(false)
+const showGit = ref(false)
+const prompt = usePrompt()
 const userMenu = computed(() => [
   {
-    key: 'email',
+    key: 'profile',
     type: 'render',
-    render: () => h('div', { class: 'user-menu-email' }, auth.user?.email),
+    render: () =>
+      h('div', { class: 'user-menu-profile' }, [
+        h('div', { class: 'user-menu-nickname' }, auth.user?.nickname),
+        h('div', { class: 'user-menu-email' }, auth.user?.email),
+      ]),
   },
   { type: 'divider', key: 'd' },
-  {
-    label: auth.user?.hasPassword ? '修改密码' : '设置密码',
-    key: 'password',
-    icon: () => h(NIcon, null, () => h(KeyRound)),
-  },
+  { label: '修改昵称', key: 'nickname', icon: () => h(NIcon, null, () => h(UserPen)) },
+  { label: '修改密码', key: 'password', icon: () => h(NIcon, null, () => h(KeyRound)) },
+  { label: 'Git 同步', key: 'git', icon: () => h(NIcon, null, () => h(GitBranch)) },
   { label: '退出登录', key: 'logout', icon: () => h(NIcon, null, () => h(LogOut)) },
 ])
+async function changeNickname() {
+  const nickname = await prompt({
+    title: '修改昵称',
+    value: auth.user?.nickname,
+    placeholder: '2～20 个字符：中文、字母、数字、_ 或 -',
+  })
+  if (!nickname || nickname === auth.user?.nickname) return
+  try {
+    auth.setUser(await authApi.updateNickname(nickname))
+    message.success('昵称已修改，之后可以用新昵称登录')
+  } catch (e) {
+    message.error((e as Error).message)
+  }
+}
 async function onUserMenu(key: string) {
+  if (key === 'nickname') void changeNickname()
   if (key === 'password') showPassword.value = true
+  if (key === 'git') showGit.value = true
   if (key === 'logout') {
     await auth.logout()
     store.reset()
     router.replace({ name: 'login' })
   }
 }
-const avatar = computed(() => (auth.user?.email[0] ?? '?').toUpperCase())
+/** 头像显示昵称的第一个字（中文取一个汉字，英文取大写首字母） */
+const avatar = computed(() => (Array.from(auth.user?.nickname ?? '?')[0] ?? '?').toUpperCase())
 
 // ---------- 空状态 ----------
 const recent = computed(() =>
@@ -128,12 +153,6 @@ async function newNote() {
         {{ sidebarOpen ? '收起侧边栏' : '展开侧边栏' }}
       </NTooltip>
       <RouterLink to="/notes" class="logo-link"><BrandLogo /></RouterLink>
-      <NTooltip v-if="USE_MOCK">
-        <template #trigger>
-          <NTag size="small" round :bordered="false" type="warning">演示模式</NTag>
-        </template>
-        未连接后端，数据保存在当前浏览器中
-      </NTooltip>
       <div class="header-spacer" />
       <NTooltip>
         <template #trigger>
@@ -146,7 +165,7 @@ async function newNote() {
         {{ isDark ? '浅色模式' : '深色模式' }}
       </NTooltip>
       <NDropdown :options="userMenu" trigger="click" placement="bottom-end" @select="onUserMenu">
-        <button class="avatar" :aria-label="`账户：${auth.user?.email}`">{{ avatar }}</button>
+        <button class="avatar" :aria-label="`账户：${auth.user?.nickname}`">{{ avatar }}</button>
       </NDropdown>
     </header>
 
@@ -191,6 +210,7 @@ async function newNote() {
     </div>
 
     <PasswordModal v-model:show="showPassword" />
+    <GitSyncModal v-model:show="showGit" />
   </div>
 </template>
 
@@ -289,9 +309,21 @@ async function newNote() {
   font-size: 12px;
   color: var(--ul-text-3);
 }
-:global(.user-menu-email) {
+:global(.user-menu-profile) {
   padding: 6px 14px 4px;
+  max-width: 240px;
+}
+:global(.user-menu-nickname) {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ul-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+:global(.user-menu-email) {
   font-size: 12px;
-  color: var(--ul-text-2);
+  color: var(--ul-text-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 </style>
