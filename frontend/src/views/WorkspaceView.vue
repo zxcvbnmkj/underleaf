@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, h, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { NButton, NDrawer, NDropdown, NIcon, NTooltip, useMessage } from 'naive-ui'
+import { NButton, NDrawer, NDropdown, NIcon, NInput, NTooltip, useMessage } from 'naive-ui'
 import {
   FilePlus,
   Folder,
@@ -14,6 +14,7 @@ import {
   Moon,
   PanelLeftClose,
   PanelLeft,
+  Search,
   Sun,
 } from 'lucide-vue-next'
 import FolderTree from '@/components/sidebar/FolderTree.vue'
@@ -29,6 +30,7 @@ import { useTheme } from '@/composables/useTheme'
 import { useMediaQuery } from '@/composables/useMediaQuery'
 import { formatRelative } from '@/utils/format'
 import { notesApi } from '@/api/notes'
+import { highlight, splitTerms } from '@/utils/highlight'
 import type { RecentNote } from '@/types'
 
 const route = useRoute()
@@ -136,15 +138,51 @@ async function loadRecent() {
     // 只影响首页卡片，不打扰用户
   }
 }
+
+// ---------- 全文搜索 ----------
+// 输入停顿后再请求；只采用最后一次请求的结果，避免先发后到的旧结果覆盖新结果
+const query = ref('')
+const searchResults = ref<RecentNote[] | null>(null) // null：未在搜索或结果未返回
+const searchTerms = ref<string[]>([]) // 当前结果对应的关键词，用于高亮
+let searchSeq = 0
+let searchTimer: ReturnType<typeof setTimeout> | undefined
+const searching = computed(() => query.value.trim() !== '')
+watch(query, () => {
+  clearTimeout(searchTimer)
+  if (!searching.value) {
+    searchSeq++
+    searchResults.value = null
+    return
+  }
+  searchTimer = setTimeout(runSearch, 300)
+})
+async function runSearch() {
+  const q = query.value.trim()
+  if (!q) return
+  const seq = ++searchSeq
+  try {
+    const results = await notesApi.search(q)
+    if (seq !== searchSeq) return
+    searchResults.value = results
+    searchTerms.value = splitTerms(q)
+  } catch (e) {
+    if (seq === searchSeq) message.error(`搜索失败：${(e as Error).message}`)
+  }
+}
+
+// 回到首页、笔记增删时重新获取（放在搜索状态声明之后：immediate 会立即读取 query）
 watch(
   () => (noteId.value == null ? store.notes.length : -1),
   (n) => {
-    if (n >= 0) void loadRecent()
+    if (n < 0) return
+    void loadRecent()
+    if (query.value.trim()) void runSearch() // 回到首页时刷新搜索结果（笔记可能刚被编辑过）
   },
   { immediate: true },
 )
-const recent = computed(() =>
-  recentNotes.value.flatMap((r) => {
+
+function decorate(list: RecentNote[], terms: string[]) {
+  return list.flatMap((r) => {
     // 标题、位置以文件夹树中的为准（在其他地方改名、移动、删除后无需重新获取）
     const n = store.noteById(r.id)
     if (!n) return []
@@ -154,9 +192,30 @@ const recent = computed(() =>
         .folderPath(n.folderId)
         .map((id) => store.folderById(id)?.name)
         .join(' / ') || '我的笔记'
-    return [{ ...n, excerpt: r.excerpt, location }]
-  }),
+    return [
+      {
+        ...n,
+        excerpt: r.excerpt,
+        location,
+        titleParts: highlight(n.title, terms),
+        excerptParts: highlight(r.excerpt, terms),
+      },
+    ]
+  })
+}
+const recent = computed(() => decorate(recentNotes.value, []))
+const results = computed(() =>
+  searchResults.value ? decorate(searchResults.value, searchTerms.value) : null,
 )
+/** 首页卡片：搜索时显示搜索结果（结果返回前保留上一次的内容），否则显示最近编辑 */
+const cards = computed(() => (searching.value ? (results.value ?? []) : recent.value))
+const heading = computed(() => {
+  if (!searching.value) return recent.value.length ? '最近编辑' : '还没有笔记'
+  if (!results.value) return '搜索中…'
+  return results.value.length
+    ? `找到 ${results.value.length} 篇笔记`
+    : `没有找到包含「${query.value.trim()}」的笔记`
+})
 async function newNote() {
   try {
     const note = await store.createNote(null)
@@ -216,30 +275,55 @@ async function newNote() {
         <div v-else class="empty-state">
           <section class="recent">
             <div class="recent-head">
-              <h3>{{ recent.length ? '最近编辑' : '还没有笔记' }}</h3>
-              <NButton type="primary" @click="newNote">
-                <template #icon
-                  ><NIcon><FilePlus /></NIcon
-                ></template>
-                新建笔记
-              </NButton>
+              <h3>{{ heading }}</h3>
+              <div class="recent-actions">
+                <NInput
+                  v-model:value="query"
+                  class="recent-search"
+                  placeholder="搜索全文，空格分隔多个词"
+                  clearable
+                  :maxlength="100"
+                  @keydown.esc="query = ''"
+                >
+                  <template #prefix
+                    ><NIcon><Search /></NIcon
+                  ></template>
+                </NInput>
+                <NButton type="primary" @click="newNote">
+                  <template #icon
+                    ><NIcon><FilePlus /></NIcon
+                  ></template>
+                  新建笔记
+                </NButton>
+              </div>
             </div>
-            <div v-if="recent.length" class="recent-grid">
+            <div v-if="cards.length" class="recent-grid">
               <RouterLink
-                v-for="n in recent"
+                v-for="n in cards"
                 :key="n.id"
                 class="recent-card"
                 :to="{ name: 'workspace', params: { noteId: n.id } }"
               >
                 <div class="card-head">
-                  <span class="card-title" :title="n.title">{{ n.title }}</span>
+                  <span class="card-title" :title="n.title"
+                    ><template v-for="(p, i) in n.titleParts" :key="i"
+                      ><mark v-if="p.hit">{{ p.text }}</mark
+                      ><template v-else>{{ p.text }}</template></template
+                    ></span
+                  >
                   <span class="card-location" :title="n.location">
                     <NIcon :size="12"><Folder /></NIcon>
                     <span class="card-location-text">{{ n.location }}</span>
                   </span>
                 </div>
                 <div class="card-excerpt" :class="{ empty: !n.excerpt }">
-                  {{ n.excerpt || '空白笔记' }}
+                  <template v-if="n.excerpt"
+                    ><template v-for="(p, i) in n.excerptParts" :key="i"
+                      ><mark v-if="p.hit">{{ p.text }}</mark
+                      ><template v-else>{{ p.text }}</template></template
+                    ></template
+                  >
+                  <template v-else>空白笔记</template>
                 </div>
                 <div class="card-foot">
                   <span>{{ formatRelative(n.updatedAt) }}</span>
@@ -328,10 +412,26 @@ async function newNote() {
   margin-bottom: 14px;
 }
 .recent h3 {
+  min-width: 0;
   margin: 0;
   font-size: 13px;
   font-weight: 600;
   color: var(--ul-text-2);
+}
+.recent-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.recent-search {
+  width: 260px;
+}
+/* 搜索关键词高亮 */
+.recent-card mark {
+  padding: 0 1px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--ul-warning) 35%, transparent);
+  color: inherit;
 }
 .recent-grid {
   display: grid;
@@ -421,6 +521,17 @@ async function newNote() {
 @media (max-width: 560px) {
   .recent-grid {
     grid-template-columns: minmax(0, 1fr);
+  }
+  /* 窄屏：搜索框和按钮单独占一行 */
+  .recent-head {
+    flex-wrap: wrap;
+  }
+  .recent-actions {
+    width: 100%;
+  }
+  .recent-search {
+    flex: 1;
+    width: auto;
   }
 }
 :global(.user-menu-profile) {

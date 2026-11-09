@@ -72,7 +72,7 @@ const markdownStyle = syntaxHighlighting(
     { tag: tags.heading2, fontWeight: '700', fontSize: '1.18em' },
     { tag: tags.heading3, fontWeight: '700', fontSize: '1.08em' },
     { tag: [tags.heading4, tags.heading5, tags.heading6], fontWeight: '700' },
-    { tag: tags.strong, fontWeight: '700', color: 'var(--ul-text)' },
+    { tag: tags.strong, fontWeight: '700', color: 'var(--ul-md-strong)' },
     { tag: tags.emphasis, fontStyle: 'italic', color: 'var(--ul-md-em)' },
     { tag: tags.strikethrough, textDecoration: 'line-through', color: 'var(--ul-text-2)' },
     { tag: [tags.link, tags.url], color: 'var(--ul-accent)' },

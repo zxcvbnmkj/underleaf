@@ -137,6 +137,35 @@ async def test_recent_notes(api: httpx.AsyncClient, session: AsyncSession):
     assert (await api.get("/api/v1/notes/recent", params={"limit": 0})).status_code == 422
 
 
+async def test_search_notes(api: httpx.AsyncClient, session: AsyncSession):
+    await login_as(api, session)
+    a = (await api.post("/api/v1/notes", json={"title": "周报"})).json()
+    b = (await api.post("/api/v1/notes", json={"title": "随笔"})).json()
+    await api.post("/api/v1/notes", json={"title": "其他"})
+    await api.put(
+        f"/api/v1/notes/{a['id']}/content",
+        json={"content": "字" * 500 + "本周完成 **Redis** 迁移", "version": 1},
+    )
+    await api.put(f"/api/v1/notes/{b['id']}/content", json={"content": "100% 的周报", "version": 1})
+
+    async def search(q: str) -> list[dict]:
+        res = await api.get("/api/v1/notes/search", params={"q": q})
+        assert res.status_code == 200
+        return res.json()
+
+    # 正文命中，摘要从命中处附近开始、不区分大小写
+    hits = await search("redis")
+    assert [n["id"] for n in hits] == [a["id"]]
+    assert hits[0]["excerpt"].startswith("…") and "Redis 迁移" in hits[0]["excerpt"]
+    # 标题或正文命中都算，按更新时间倒序
+    assert [n["id"] for n in await search("周报")] == [b["id"], a["id"]]
+    # 多个关键词需同时命中
+    assert [n["id"] for n in await search("周报 迁移")] == [a["id"]]
+    # % 按普通字符匹配
+    assert [n["id"] for n in await search("%")] == [b["id"]]
+    assert (await api.get("/api/v1/notes/search", params={"q": ""})).status_code == 422
+
+
 async def test_new_note_titles_avoid_duplicates(api: httpx.AsyncClient, session: AsyncSession):
     await login_as(api, session)
     titles = [(await api.post("/api/v1/notes", json={})).json()["title"] for _ in range(3)]

@@ -1,7 +1,7 @@
-"""笔记：列表（不含正文）、最近编辑（带摘要）、详情、新建、修改元信息、保存正文（乐观锁）、删除；以及公开分享。"""
+"""笔记：列表（不含正文）、最近编辑（带摘要）、全文搜索、详情、新建、修改元信息、保存正文（乐观锁）、删除；以及公开分享。"""
 
 from fastapi import APIRouter, Query
-from sqlalchemy import func, select, update
+from sqlalchemy import and_, func, or_, select, update
 from sqlalchemy.orm import defer
 
 from app.api.deps import CurrentUser, Session
@@ -18,7 +18,7 @@ from app.schemas.notes import (
     RecentNoteOut,
     SharedNoteOut,
 )
-from app.services.excerpt import make_excerpt
+from app.services.excerpt import make_excerpt, make_snippet
 from app.services.names import clean_name
 from app.services.notes import (
     bump_content_rev,
@@ -64,6 +64,55 @@ async def recent_notes(
             excerpt=make_excerpt(head or ""),
         )
         for note, head in rows.tuples()
+    ]
+
+
+# 搜索摘要：从第一个关键词命中处往前留这么多字符开始截取（去掉 Markdown 标记前的原文长度）
+_SNIPPET_BEFORE = 200
+_MAX_TERMS = 5
+
+
+@router.get("/search", response_model=list[RecentNoteOut])
+async def search_notes(
+    user: CurrentUser,
+    session: Session,
+    q: str = Query(..., min_length=1, max_length=100),
+    limit: int = Query(30, ge=1, le=50),
+) -> list[RecentNoteOut]:
+    """全文搜索：按空格分成多个关键词，每个关键词都要出现在标题或正文中（不区分大小写）。
+
+    结果按更新时间倒序，摘要取第一个关键词在正文中命中处附近的文字。
+    """
+    terms = list(dict.fromkeys(q.split()))[:_MAX_TERMS]
+    if not terms:
+        return []
+    # 第一个关键词在正文中的位置（1 起，未命中为 0），只把附近一段读出来
+    pos = func.locate(terms[0], Note.content)
+    start = func.greatest(pos - _SNIPPET_BEFORE, 1)
+    rows = await session.execute(
+        select(Note, start, func.substring(Note.content, start, _EXCERPT_SOURCE_CHARS))
+        .options(defer(Note.content))
+        .where(
+            Note.user_id == user.id,
+            and_(
+                *(
+                    or_(
+                        Note.title.contains(t, autoescape=True),
+                        Note.content.contains(t, autoescape=True),
+                    )
+                    for t in terms
+                )
+            ),
+        )
+        .order_by(Note.updated_at.desc(), Note.id.desc())
+        .limit(limit)
+    )
+    return [
+        RecentNoteOut(
+            **NoteMetaOut.model_validate(note, from_attributes=True).model_dump(),
+            excerpt=make_snippet(part or "", terms, clipped=offset > 1),
+        )
+        for note, offset, part in rows.tuples()
     ]
 
 

@@ -25,12 +25,6 @@
 }
 .markdown-body h2 {
   font-size: 1.5em;
-  padding-top: 1em;
-  border-top: 1px solid var(--ul-border);
-}
-.markdown-body > div > h2:first-child {
-  border-top: 0;
-  padding-top: 0;
 }
 .markdown-body h3 {
   font-size: 1.25em;
@@ -39,16 +33,20 @@
   font-size: 1.08em;
 }
 
+/* 加粗用醒目的颜色区分（与编辑器一致）；标题本身已加粗，其中的加粗不再变色 */
+.markdown-body strong {
+  font-weight: 600;
+  color: var(--ul-md-strong);
+}
+.markdown-body :is(h1, h2, h3, h4, h5, h6) strong {
+  color: inherit;
+}
+
 /* ---------- 悬停标题时显示级别标记（# / ## …） ----------
  * 放在标题左侧的留白中，与标题第一行垂直居中；只在有鼠标的设备上生效，打印 / PDF 中不显示。
- * 两个长度先在标题上用 em 声明，借助 @property 换算成像素后再传给伪元素，
+ * 行高先在标题上用 em 声明，借助 @property 换算成像素后再传给伪元素，
  * 这样伪元素虽然字号不同，也能准确对齐标题的第一行。 */
 @property --ul-heading-line {
-  syntax: '<length>';
-  inherits: true;
-  initial-value: 0px;
-}
-@property --ul-heading-offset {
   syntax: '<length>';
   inherits: true;
   initial-value: 0px;
@@ -57,17 +55,10 @@
   .markdown-body :is(h1, h2, h3, h4, h5, h6) {
     position: relative;
     --ul-heading-line: 1.35em; /* 与标题的 line-height 一致 */
-    --ul-heading-offset: 0px;
-  }
-  .markdown-body h2 {
-    --ul-heading-offset: 1em; /* 与 h2 的 padding-top 一致 */
-  }
-  .markdown-body > div > h2:first-child {
-    --ul-heading-offset: 0px;
   }
   .markdown-body :is(h1, h2, h3, h4, h5, h6)::before {
     position: absolute;
-    top: var(--ul-heading-offset);
+    top: 0;
     right: 100%;
     padding-right: 0.35em; /* 间距随字号变化，大标题留得更开 */
     line-height: var(--ul-heading-line);

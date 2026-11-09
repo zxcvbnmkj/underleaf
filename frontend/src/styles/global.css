@@ -15,6 +15,7 @@
   --ul-code-text: #0e7a55;
   --ul-code-inline-bg: rgb(14 122 85 / 0.1);
   --ul-md-em: #7048c8;
+  --ul-md-strong: #c2410c;
   --ul-font-mono: 'JetBrains Mono', 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
   color-scheme: light;
 }
@@ -36,6 +37,7 @@ html.dark {
   --ul-code-text: #6fd8aa;
   --ul-code-inline-bg: rgb(111 216 170 / 0.12);
   --ul-md-em: #b9a1f5;
+  --ul-md-strong: #f4956a;
   color-scheme: dark;
 }
 

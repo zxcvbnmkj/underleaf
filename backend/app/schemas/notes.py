@@ -38,7 +38,7 @@ class NoteOut(NoteMetaOut):
 
 
 class RecentNoteOut(NoteMetaOut):
-    """首页「最近编辑」：元信息 + 正文开头的纯文本摘要。"""
+    """首页「最近编辑」与全文搜索结果：元信息 + 纯文本摘要（搜索时为命中处附近的文字）。"""
 
     excerpt: str
 

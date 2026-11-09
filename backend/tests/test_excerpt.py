@@ -1,8 +1,8 @@
-"""Markdown 摘要（首页「最近编辑」卡片）。"""
+"""Markdown 摘要（首页「最近编辑」卡片、全文搜索结果）。"""
 
 import pytest
 
-from app.services.excerpt import make_excerpt
+from app.services.excerpt import make_excerpt, make_snippet
 
 
 @pytest.mark.parametrize(
@@ -27,3 +27,19 @@ def test_strip_markdown(markdown: str, expected: str):
 def test_truncate():
     assert make_excerpt("字" * 200, limit=10) == "字" * 10 + "…"
     assert make_excerpt("字" * 10, limit=10) == "字" * 10
+
+
+def test_snippet_around_match():
+    text = "甲" * 100 + "**关键词**" + "乙" * 100
+    expected = "…" + "甲" * 5 + "关键词" + "乙" * 22 + "…"
+    assert make_snippet(text, ["关键词"], limit=30, lead=5) == expected
+    # 命中在开头：不加前省略号
+    assert make_snippet("关键词在前", ["关键词"]) == "关键词在前"
+
+
+def test_snippet_case_insensitive_and_fallback():
+    assert make_snippet("abc Hello", ["hello"], lead=2) == "…c Hello"
+    # 只在链接地址里命中，纯文本中找不到：从头截取
+    assert make_snippet("见[文档](http://key)", ["key"]) == "见文档"
+    # 传入的是正文中间截出的片段
+    assert make_snippet("中间一段", ["无"], clipped=True) == "…中间一段"

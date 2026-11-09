@@ -5,6 +5,9 @@ export const notesApi = {
   list: () => http.get<NoteMeta[]>('/notes'),
   /** 最近编辑的笔记，带正文摘要 */
   recent: (limit = 8) => http.get<RecentNote[]>(`/notes/recent?limit=${limit}`),
+  /** 全文搜索（标题 + 正文），空格分隔多个关键词；摘要为命中处附近的文字 */
+  search: (q: string, limit = 30) =>
+    http.get<RecentNote[]>(`/notes/search?q=${encodeURIComponent(q)}&limit=${limit}`),
   get: (id: number) => http.get<Note>(`/notes/${id}`),
   create: (title: string, folderId: number | null) =>
     http.post<Note>('/notes', { title, folderId }),

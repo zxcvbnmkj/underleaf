@@ -6,7 +6,6 @@ import {
   NDropdown,
   NEmpty,
   NIcon,
-  NInput,
   NTooltip,
   NTree,
   useDialog,
@@ -24,7 +23,6 @@ import {
   FolderPlus,
   Globe,
   Pencil,
-  Search,
   Trash2,
 } from 'lucide-vue-next'
 import { folderKey, noteKey, useWorkspaceStore, type TreeNode } from '@/stores/workspace'
@@ -38,8 +36,6 @@ const router = useRouter()
 const message = useMessage()
 const dialog = useDialog()
 const prompt = usePrompt()
-
-const pattern = ref('')
 
 // ---------- 展开状态（本地记忆） ----------
 const EXPANDED_KEY = 'underleaf-expanded'
@@ -329,21 +325,12 @@ defineExpose({ newNote, newFolder })
         </NTooltip>
       </div>
     </div>
-    <div class="tree-search">
-      <NInput v-model:value="pattern" size="small" placeholder="搜索标题" clearable>
-        <template #prefix
-          ><NIcon><Search /></NIcon
-        ></template>
-      </NInput>
-    </div>
     <div class="tree-body" @contextmenu="onBlankContextmenu">
       <NTree
         v-if="store.tree.length"
         block-line
         draggable
         :data="store.tree as unknown as TreeOption[]"
-        :pattern="pattern"
-        :show-irrelevant-nodes="false"
         :selected-keys="selectedKeys"
         :expanded-keys="expandedKeys"
         :render-prefix="renderPrefix"
@@ -396,9 +383,6 @@ defineExpose({ newNote, newFolder })
 .tree-actions {
   display: flex;
   gap: 2px;
-}
-.tree-search {
-  padding: 4px 12px 8px;
 }
 .tree-body {
   flex: 1;
