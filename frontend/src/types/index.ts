@@ -27,6 +27,11 @@ export interface Note extends NoteMeta {
   content: string
 }
 
+/** 首页「最近编辑」：元信息 + 正文开头的纯文本摘要 */
+export interface RecentNote extends NoteMeta {
+  excerpt: string
+}
+
 export interface SharedNote {
   title: string
   content: string

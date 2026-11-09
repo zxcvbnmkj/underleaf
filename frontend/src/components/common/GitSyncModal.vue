@@ -12,9 +12,10 @@ import {
   useDialog,
   useMessage,
 } from 'naive-ui'
-import { Copy, Eye, EyeOff, Plus } from 'lucide-vue-next'
+import { Copy, Eye, EyeOff } from 'lucide-vue-next'
 import { gitApi } from '@/api/git'
 import type { AccessToken, GitInfo } from '@/types'
+import { copyText } from '@/utils/clipboard'
 import { formatDateTime, formatRelative } from '@/utils/format'
 
 const show = defineModel<boolean>('show', { required: true })
@@ -81,8 +82,9 @@ async function createToken() {
     const token = await gitApi.createToken(name, expiry.value || null)
     newName.value = ''
     tokens.value = [token, ...tokens.value]
-    revealed.value = new Set([...revealed.value, token.id])
-    if (token.token) void copy(token.token, '新令牌')
+    // 默认遮住；顺便复制到剪贴板，复制失败时用户可以点「复制」按钮
+    if (token.token && (await copyText(token.token))) message.success('令牌已生成并复制')
+    else message.success('令牌已生成')
   } catch (e) {
     message.error((e as Error).message)
   } finally {
@@ -109,12 +111,8 @@ function revoke(token: AccessToken) {
 }
 
 async function copy(text: string, what: string) {
-  try {
-    await navigator.clipboard.writeText(text)
-    message.success(`${what}已复制`)
-  } catch {
-    message.warning('复制失败，请手动选择后复制')
-  }
+  if (await copyText(text)) message.success(`${what}已复制`)
+  else message.warning('复制失败，请手动选择后复制')
 }
 
 function selectAll(e: FocusEvent) {
@@ -132,8 +130,7 @@ function selectAll(e: FocusEvent) {
   >
     <NSpin :show="loading">
       <p class="hint">
-        用 Git 把笔记克隆到本地，用任意编辑器修改后 push 回来；网页上的修改用 pull 拉取。
-        每个文件夹对应一个目录，每篇笔记对应「标题.md」。
+        用 Git 把笔记克隆到本地，用任意编辑器修改后 push 回来，网页上的修改用 pull 拉取。
       </p>
 
       <section class="block">
@@ -147,10 +144,6 @@ function selectAll(e: FocusEvent) {
             复制
           </NButton>
         </NInputGroup>
-        <p class="note">
-          Git 提示输入时：用户名随意填写（如
-          {{ info?.username }}），密码粘贴下方的访问令牌。只需输入一次，之后 Git 会自动记住。
-        </p>
       </section>
 
       <section class="block">
@@ -158,17 +151,12 @@ function selectAll(e: FocusEvent) {
         <div class="create-row">
           <NInput
             v-model:value="newName"
-            placeholder="令牌名称，如「家里的电脑」"
+            placeholder="令牌名称"
             :maxlength="64"
             @keydown.enter="createToken"
           />
           <NSelect v-model:value="expiry" :options="expiryOptions" class="expiry" />
-          <NButton :loading="creating" @click="createToken">
-            <template #icon
-              ><NIcon><Plus /></NIcon
-            ></template>
-            生成
-          </NButton>
+          <NButton type="primary" :loading="creating" @click="createToken">生成</NButton>
         </div>
 
         <NEmpty v-if="!tokens.length && !loading" size="small" description="还没有令牌" />
@@ -210,11 +198,6 @@ function selectAll(e: FocusEvent) {
           </li>
         </ul>
       </section>
-
-      <p class="note">
-        说明：仓库中只能有文件夹和 .md 文件；空文件夹不会出现在仓库中。网页上有新修改时 push
-        会被拒绝，先 git pull 合并即可。只支持 main 分支。
-      </p>
     </NSpin>
   </NModal>
 </template>

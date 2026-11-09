@@ -1,8 +1,10 @@
-import type { Note, NoteMeta, SharedNote } from '@/types'
+import type { Note, NoteMeta, RecentNote, SharedNote } from '@/types'
 import { http } from './http'
 
 export const notesApi = {
   list: () => http.get<NoteMeta[]>('/notes'),
+  /** 最近编辑的笔记，带正文摘要 */
+  recent: (limit = 8) => http.get<RecentNote[]>(`/notes/recent?limit=${limit}`),
   get: (id: number) => http.get<Note>(`/notes/${id}`),
   create: (title: string, folderId: number | null) =>
     http.post<Note>('/notes', { title, folderId }),

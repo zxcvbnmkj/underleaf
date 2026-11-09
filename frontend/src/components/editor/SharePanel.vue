@@ -3,6 +3,7 @@ import { computed, ref } from 'vue'
 import { NButton, NIcon, NInput, NInputGroup, NPopover, NSwitch, useMessage } from 'naive-ui'
 import { Copy, Globe, Share2 } from 'lucide-vue-next'
 import { useWorkspaceStore } from '@/stores/workspace'
+import { copyText } from '@/utils/clipboard'
 
 const props = defineProps<{ noteId: number; compact?: boolean }>()
 const store = useWorkspaceStore()
@@ -25,12 +26,8 @@ async function toggle(value: boolean) {
 }
 
 async function copy() {
-  try {
-    await navigator.clipboard.writeText(link.value)
-    message.success('链接已复制')
-  } catch {
-    message.warning('复制失败，请手动选择链接复制')
-  }
+  if (await copyText(link.value)) message.success('链接已复制')
+  else message.warning('复制失败，请手动选择链接复制')
 }
 </script>
 

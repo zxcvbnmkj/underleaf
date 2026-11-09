@@ -1,7 +1,7 @@
-"""笔记：列表（不含正文）、详情、新建、修改元信息、保存正文（乐观锁）、删除；以及公开分享。"""
+"""笔记：列表（不含正文）、最近编辑（带摘要）、详情、新建、修改元信息、保存正文（乐观锁）、删除；以及公开分享。"""
 
-from fastapi import APIRouter
-from sqlalchemy import select, update
+from fastapi import APIRouter, Query
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import defer
 
 from app.api.deps import CurrentUser, Session
@@ -15,8 +15,10 @@ from app.schemas.notes import (
     NoteMetaOut,
     NoteOut,
     NoteUpdate,
+    RecentNoteOut,
     SharedNoteOut,
 )
+from app.services.excerpt import make_excerpt
 from app.services.names import clean_name
 from app.services.notes import (
     bump_content_rev,
@@ -38,6 +40,31 @@ async def list_notes(user: CurrentUser, session: Session) -> list[Note]:
         select(Note).options(defer(Note.content)).where(Note.user_id == user.id)
     )
     return list(rows)
+
+
+# 摘要只需要正文开头：数据库只截取这么多字符，避免读出整篇（正文上限 5MB）
+_EXCERPT_SOURCE_CHARS = 1000
+
+
+@router.get("/recent", response_model=list[RecentNoteOut])
+async def recent_notes(
+    user: CurrentUser, session: Session, limit: int = Query(8, ge=1, le=20)
+) -> list[RecentNoteOut]:
+    """最近编辑的笔记，按更新时间倒序，带正文开头的纯文本摘要。"""
+    rows = await session.execute(
+        select(Note, func.left(Note.content, _EXCERPT_SOURCE_CHARS))
+        .options(defer(Note.content))
+        .where(Note.user_id == user.id)
+        .order_by(Note.updated_at.desc(), Note.id.desc())
+        .limit(limit)
+    )
+    return [
+        RecentNoteOut(
+            **NoteMetaOut.model_validate(note, from_attributes=True).model_dump(),
+            excerpt=make_excerpt(head or ""),
+        )
+        for note, head in rows.tuples()
+    ]
 
 
 @router.post("", response_model=NoteOut)

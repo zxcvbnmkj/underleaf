@@ -37,6 +37,12 @@ class NoteOut(NoteMetaOut):
     content: str
 
 
+class RecentNoteOut(NoteMetaOut):
+    """首页「最近编辑」：元信息 + 正文开头的纯文本摘要。"""
+
+    excerpt: str
+
+
 class NoteCreate(Schema):
     title: str = "未命名笔记"
     folder_id: int | None = None

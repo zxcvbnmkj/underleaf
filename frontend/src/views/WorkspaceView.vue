@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { computed, h, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { NButton, NDrawer, NDropdown, NEmpty, NIcon, NTooltip, useMessage } from 'naive-ui'
+import { NButton, NDrawer, NDropdown, NIcon, NTooltip, useMessage } from 'naive-ui'
 import {
   FilePlus,
-  FileText,
+  Folder,
+  Globe,
   GitBranch,
   KeyRound,
   UserPen,
@@ -27,6 +28,8 @@ import { useWorkspaceStore } from '@/stores/workspace'
 import { useTheme } from '@/composables/useTheme'
 import { useMediaQuery } from '@/composables/useMediaQuery'
 import { formatRelative } from '@/utils/format'
+import { notesApi } from '@/api/notes'
+import type { RecentNote } from '@/types'
 
 const route = useRoute()
 const router = useRouter()
@@ -122,8 +125,37 @@ async function onUserMenu(key: string) {
 const avatar = computed(() => (Array.from(auth.user?.nickname ?? '?')[0] ?? '?').toUpperCase())
 
 // ---------- 空状态 ----------
+// 摘要需要正文，由后端单独返回；回到首页、笔记增删时重新获取
+// 宽屏一行 4 张，显示 3 行
+const RECENT_LIMIT = 12
+const recentNotes = ref<RecentNote[]>([])
+async function loadRecent() {
+  try {
+    recentNotes.value = await notesApi.recent(RECENT_LIMIT)
+  } catch {
+    // 只影响首页卡片，不打扰用户
+  }
+}
+watch(
+  () => (noteId.value == null ? store.notes.length : -1),
+  (n) => {
+    if (n >= 0) void loadRecent()
+  },
+  { immediate: true },
+)
 const recent = computed(() =>
-  [...store.notes].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).slice(0, 6),
+  recentNotes.value.flatMap((r) => {
+    // 标题、位置以文件夹树中的为准（在其他地方改名、移动、删除后无需重新获取）
+    const n = store.noteById(r.id)
+    if (!n) return []
+    // 所在文件夹路径，如「工作 / 周报」；根目录显示「我的笔记」
+    const location =
+      store
+        .folderPath(n.folderId)
+        .map((id) => store.folderById(id)?.name)
+        .join(' / ') || '我的笔记'
+    return [{ ...n, excerpt: r.excerpt, location }]
+  }),
 )
 async function newNote() {
   try {
@@ -182,28 +214,39 @@ async function newNote() {
       <main class="main">
         <NoteWorkspace v-if="noteId != null" :note-id="noteId" :dark="isDark" :narrow="narrow" />
         <div v-else class="empty-state">
-          <NEmpty description="从左侧选择一篇笔记，或者新建一篇">
-            <template #extra>
+          <section class="recent">
+            <div class="recent-head">
+              <h3>{{ recent.length ? '最近编辑' : '还没有笔记' }}</h3>
               <NButton type="primary" @click="newNote">
                 <template #icon
                   ><NIcon><FilePlus /></NIcon
                 ></template>
                 新建笔记
               </NButton>
-            </template>
-          </NEmpty>
-          <section v-if="recent.length" class="recent">
-            <h3>最近编辑</h3>
-            <RouterLink
-              v-for="n in recent"
-              :key="n.id"
-              class="recent-item"
-              :to="{ name: 'workspace', params: { noteId: n.id } }"
-            >
-              <NIcon :size="16" class="recent-icon"><FileText /></NIcon>
-              <span class="recent-title">{{ n.title }}</span>
-              <span class="recent-time">{{ formatRelative(n.updatedAt) }}</span>
-            </RouterLink>
+            </div>
+            <div v-if="recent.length" class="recent-grid">
+              <RouterLink
+                v-for="n in recent"
+                :key="n.id"
+                class="recent-card"
+                :to="{ name: 'workspace', params: { noteId: n.id } }"
+              >
+                <div class="card-head">
+                  <span class="card-title" :title="n.title">{{ n.title }}</span>
+                  <span class="card-location" :title="n.location">
+                    <NIcon :size="12"><Folder /></NIcon>
+                    <span class="card-location-text">{{ n.location }}</span>
+                  </span>
+                </div>
+                <div class="card-excerpt" :class="{ empty: !n.excerpt }">
+                  {{ n.excerpt || '空白笔记' }}
+                </div>
+                <div class="card-foot">
+                  <span>{{ formatRelative(n.updatedAt) }}</span>
+                  <NIcon v-if="n.isPublic" :size="13" title="已公开分享"><Globe /></NIcon>
+                </div>
+              </RouterLink>
+            </div>
           </section>
         </div>
       </main>
@@ -272,42 +315,113 @@ async function newNote() {
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 14vh 16px 32px;
-  gap: 40px;
+  padding: 8vh 16px 32px;
 }
 .recent {
-  width: min(440px, 100%);
+  width: min(1040px, 100%);
+}
+.recent-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
 }
 .recent h3 {
-  margin: 0 0 8px;
-  font-size: 12px;
+  margin: 0;
+  font-size: 13px;
   font-weight: 600;
   color: var(--ul-text-2);
 }
-.recent-item {
+.recent-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 14px;
+}
+.recent-card {
   display: flex;
-  align-items: center;
+  flex-direction: column;
   gap: 10px;
-  padding: 8px 10px;
-  border-radius: 6px;
+  min-height: 180px;
+  padding: 16px 18px;
+  border: 1px solid var(--ul-border);
+  border-radius: 10px;
+  background: var(--ul-bg-soft);
   color: var(--ul-text);
   text-decoration: none;
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s,
+    transform 0.15s;
 }
-.recent-item:hover {
-  background: var(--ul-bg-mute);
+.recent-card:hover {
+  border-color: var(--ul-accent);
+  box-shadow: 0 4px 16px rgb(0 0 0 / 0.06);
+  transform: translateY(-1px);
 }
-.recent-icon {
-  color: var(--ul-text-3);
+.recent-card:focus-visible {
+  outline: 2px solid var(--ul-accent);
+  outline-offset: 2px;
 }
-.recent-title {
+.card-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+.card-title {
   flex: 1;
+  min-width: 0;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.45;
   overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
+  text-overflow: ellipsis;
 }
-.recent-time {
+.card-excerpt {
+  flex: 1;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--ul-text-2);
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  word-break: break-word;
+}
+.card-excerpt.empty {
+  color: var(--ul-text-3);
+  font-style: italic;
+}
+.card-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   font-size: 12px;
   color: var(--ul-text-3);
+}
+/* 所在文件夹：标题右侧，文件夹名较长时最多占 40% 宽度，优先保证标题完整 */
+.card-location {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex-shrink: 1;
+  min-width: 0;
+  max-width: 40%;
+  font-size: 12px;
+  color: var(--ul-text-3);
+  align-self: center;
+}
+.card-location-text {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+@media (max-width: 560px) {
+  .recent-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 :global(.user-menu-profile) {
   padding: 6px 14px 4px;

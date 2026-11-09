@@ -118,6 +118,25 @@ async def test_note_lifecycle(api: httpx.AsyncClient, session: AsyncSession):
     assert (await api.get(f"/api/v1/notes/{note['id']}")).status_code == 404
 
 
+async def test_recent_notes(api: httpx.AsyncClient, session: AsyncSession):
+    await login_as(api, session)
+    ids = []
+    for i in range(3):
+        note = (await api.post("/api/v1/notes", json={"title": f"笔记{i}"})).json()
+        ids.append(note["id"])
+    # 最后编辑第一篇，它应排在最前
+    await api.put(
+        f"/api/v1/notes/{ids[0]}/content",
+        json={"content": "# 开头\n\n**正文**" + "字" * 300, "version": 1},
+    )
+
+    recent = (await api.get("/api/v1/notes/recent", params={"limit": 2})).json()
+    assert [n["id"] for n in recent] == [ids[0], ids[2]]
+    assert recent[0]["excerpt"].startswith("开头 正文字") and recent[0]["excerpt"].endswith("…")
+    assert recent[1]["excerpt"] == "" and "content" not in recent[0]
+    assert (await api.get("/api/v1/notes/recent", params={"limit": 0})).status_code == 422
+
+
 async def test_new_note_titles_avoid_duplicates(api: httpx.AsyncClient, session: AsyncSession):
     await login_as(api, session)
     titles = [(await api.post("/api/v1/notes", json={})).json()["title"] for _ in range(3)]

@@ -380,6 +380,7 @@ TEST_DATABASE_URL=mysql+aiomysql://用户:密码@主机:3306/underleaf_test pdm 
 | PATCH | `/folders/{id}` | 重命名 / 移动 `{ name?, parentId? }`，`parentId: null` 表示移到根目录；不能移到自身或子文件夹下 |
 | DELETE | `/folders/{id}` | 级联删除子文件夹和笔记 |
 | GET | `/notes` | 笔记元信息列表（不含正文），每项 `{ id, title, folderId, isPublic, publicId, version, createdAt, updatedAt }` |
+| GET | `/notes/recent?limit=8` | 最近编辑的笔记（按更新时间倒序，limit 1～20），每项为元信息加 `excerpt`：正文开头去掉 Markdown 标记后的纯文本，最多 120 字 |
 | POST | `/notes` | 新建 `{ title?, folderId? }`，标题默认「未命名笔记」，同一文件夹下重名时自动编号（未命名笔记 2） |
 | GET | `/notes/{id}` | 笔记详情（含正文和 `version`） |
 | PATCH | `/notes/{id}` | 修改标题 / 移动 / 公开开关 `{ title?, folderId?, isPublic? }`，重名返回 409；不改变版本号 |

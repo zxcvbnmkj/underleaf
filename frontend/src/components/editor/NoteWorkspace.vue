@@ -48,30 +48,22 @@ const editor = useNoteEditor(toRef(props, 'noteId'))
 const { note, content, loading, loadError, status, lastError } = editor
 
 // ---------- 视图模式 ----------
-// 只提供「分栏」和「预览」两种，默认分栏
+// 只提供「分栏」和「预览」两种。每次打开笔记默认预览；
+// 空笔记（如刚新建的）直接进入分栏，方便马上输入
 type SavedMode = 'split' | 'preview'
-const MODE_KEY = 'underleaf-view-mode'
-const savedMode = ref<SavedMode>(readMode())
-function readMode(): SavedMode {
-  try {
-    // 以前保存的「编辑」模式等其他值一律按分栏处理
-    if (localStorage.getItem(MODE_KEY) === 'preview') return 'preview'
-  } catch {
-    /* ignore */
-  }
-  return 'split'
-}
+const savedMode = ref<SavedMode>('preview')
+watch(
+  () => note.value?.id,
+  (id) => {
+    if (id != null) savedMode.value = content.value === '' ? 'split' : 'preview'
+  },
+)
 /** 窄屏放不下两栏，分栏时只显示编辑区 */
 const mode = computed<ViewMode>(() =>
   props.narrow && savedMode.value === 'split' ? 'edit' : savedMode.value,
 )
 function setMode(m: SavedMode) {
   savedMode.value = m
-  try {
-    localStorage.setItem(MODE_KEY, m)
-  } catch {
-    /* ignore */
-  }
 }
 const modes = computed(() => [
   props.narrow
