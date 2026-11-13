@@ -147,6 +147,17 @@ const searchTerms = ref<string[]>([]) // 当前结果对应的关键词，用于
 let searchSeq = 0
 let searchTimer: ReturnType<typeof setTimeout> | undefined
 const searching = computed(() => query.value.trim() !== '')
+function submitSearch() {
+  const q = query.value.trim()
+  void router.push({ name: 'workspace', query: q ? { q } : {} })
+}
+watch(
+  () => route.query.q,
+  (value) => {
+    query.value = typeof value === 'string' ? value : ''
+  },
+  { immediate: true },
+)
 watch(query, () => {
   clearTimeout(searchTimer)
   if (!searching.value) {
@@ -182,7 +193,8 @@ watch(
 )
 
 function decorate(list: RecentNote[], terms: string[]) {
-  return list.flatMap((r) => {
+  return list
+    .flatMap((r) => {
     // 标题、位置以文件夹树中的为准（在其他地方改名、移动、删除后无需重新获取）
     const n = store.noteById(r.id)
     if (!n) return []
@@ -192,16 +204,21 @@ function decorate(list: RecentNote[], terms: string[]) {
         .folderPath(n.folderId)
         .map((id) => store.folderById(id)?.name)
         .join(' / ') || '我的笔记'
-    return [
-      {
-        ...n,
-        excerpt: r.excerpt,
-        location,
-        titleParts: highlight(n.title, terms),
-        excerptParts: highlight(r.excerpt, terms),
-      },
-    ]
-  })
+      return [
+        {
+          ...n,
+          excerpt: r.excerpt,
+          location,
+          titleParts: highlight(n.title, terms),
+          excerptParts: highlight(r.excerpt, terms),
+        },
+      ]
+    })
+    .sort((a, b) => {
+      const aTitleHit = a.titleParts.some((part) => part.hit)
+      const bTitleHit = b.titleParts.some((part) => part.hit)
+      return Number(bTitleHit) - Number(aTitleHit)
+    })
 }
 const recent = computed(() => decorate(recentNotes.value, []))
 const results = computed(() =>
@@ -245,6 +262,26 @@ async function newNote() {
       </NTooltip>
       <RouterLink to="/notes" class="logo-link"><BrandLogo /></RouterLink>
       <div class="header-spacer" />
+      <NInput
+        v-model:value="query"
+        class="header-search"
+        size="small"
+        placeholder="搜索全文，空格分隔多个词"
+        clearable
+        :maxlength="100"
+        @keydown.enter="submitSearch"
+        @keydown.esc="query = ''"
+      >
+        <template #prefix
+          ><NIcon><Search /></NIcon
+        ></template>
+      </NInput>
+      <NButton type="primary" size="small" @click="newNote">
+        <template #icon
+          ><NIcon><FilePlus /></NIcon
+        ></template>
+        新建笔记
+      </NButton>
       <NTooltip>
         <template #trigger>
           <NButton quaternary circle size="small" aria-label="切换主题" @click="toggleTheme">
@@ -276,26 +313,6 @@ async function newNote() {
           <section class="recent">
             <div class="recent-head">
               <h3>{{ heading }}</h3>
-              <div class="recent-actions">
-                <NInput
-                  v-model:value="query"
-                  class="recent-search"
-                  placeholder="搜索全文，空格分隔多个词"
-                  clearable
-                  :maxlength="100"
-                  @keydown.esc="query = ''"
-                >
-                  <template #prefix
-                    ><NIcon><Search /></NIcon
-                  ></template>
-                </NInput>
-                <NButton type="primary" @click="newNote">
-                  <template #icon
-                    ><NIcon><FilePlus /></NIcon
-                  ></template>
-                  新建笔记
-                </NButton>
-              </div>
             </div>
             <div v-if="cards.length" class="recent-grid">
               <RouterLink
@@ -359,7 +376,25 @@ async function newNote() {
   background: var(--ul-bg-soft);
 }
 .logo-link {
+  display: inline-flex;
+  align-items: center;
+  height: 28px;
   text-decoration: none;
+}
+.app-header > :first-child {
+  display: inline-flex;
+  align-items: center;
+  height: 28px;
+}
+.header-search {
+  flex: 0 1 320px;
+  width: 320px;
+  min-width: 160px;
+}
+.app-header > .n-button {
+  flex-shrink: 0;
+  white-space: nowrap;
+  margin-right: 8px;
 }
 .header-spacer {
   flex: 1;
@@ -417,14 +452,6 @@ async function newNote() {
   font-size: 13px;
   font-weight: 600;
   color: var(--ul-text-2);
-}
-.recent-actions {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-.recent-search {
-  width: 260px;
 }
 /* 搜索关键词高亮 */
 .recent-card mark {
@@ -522,16 +549,9 @@ async function newNote() {
   .recent-grid {
     grid-template-columns: minmax(0, 1fr);
   }
-  /* 窄屏：搜索框和按钮单独占一行 */
-  .recent-head {
-    flex-wrap: wrap;
-  }
-  .recent-actions {
-    width: 100%;
-  }
-  .recent-search {
-    flex: 1;
-    width: auto;
+  .header-search {
+    flex-basis: min(220px, 36vw);
+    width: min(220px, 36vw);
   }
 }
 :global(.user-menu-profile) {
