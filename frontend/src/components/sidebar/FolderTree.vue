@@ -11,6 +11,7 @@ import {
   useDialog,
   useMessage,
   type DropdownOption,
+  type TreeDragInfo,
   type TreeDropInfo,
   type TreeOption,
 } from 'naive-ui'
@@ -73,6 +74,41 @@ watch(
 const selectedKeys = computed(() =>
   props.currentNoteId != null ? [noteKey(props.currentNoteId)] : [],
 )
+
+// 拖拽到列表边缘时自动滚动，让不可见的目标文件夹可以被拖到。
+const treeBody = ref<HTMLElement | null>(null)
+let autoScrollFrame = 0
+let autoScrollSpeed = 0
+function stopAutoScroll() {
+  if (autoScrollFrame) cancelAnimationFrame(autoScrollFrame)
+  autoScrollFrame = 0
+  autoScrollSpeed = 0
+}
+function onDragover({ event }: TreeDragInfo) {
+  const el = treeBody.value
+  if (!el) return
+  const rect = el.getBoundingClientRect()
+  const edge = Math.min(64, rect.height / 3)
+  const distanceFromTop = event.clientY - rect.top
+  const distanceFromBottom = rect.bottom - event.clientY
+  let speed = 0
+  if (distanceFromTop >= 0 && distanceFromTop < edge) {
+    speed = -Math.max(2, (edge - distanceFromTop) / 8)
+  } else if (distanceFromBottom >= 0 && distanceFromBottom < edge) {
+    speed = Math.max(2, (edge - distanceFromBottom) / 8)
+  }
+  if (!speed) {
+    stopAutoScroll()
+    return
+  }
+  autoScrollSpeed = speed
+  if (autoScrollFrame) return
+  const scroll = () => {
+    el.scrollTop += autoScrollSpeed
+    autoScrollFrame = requestAnimationFrame(scroll)
+  }
+  autoScrollFrame = requestAnimationFrame(scroll)
+}
 
 /** 点击笔记时打开；点击文件夹只切换展开（由 NTree 处理），不改变选中项 */
 function onSelect(_keys: string[], options: Array<TreeOption | null>) {
@@ -258,6 +294,7 @@ function remove(t: TreeNode) {
 
 // ---------- 拖拽移动 ----------
 async function onDrop({ node, dragNode, dropPosition }: TreeDropInfo) {
+  stopAutoScroll()
   const target = node as unknown as TreeNode
   const dragged = dragNode as unknown as TreeNode
   let parentId: number | null
@@ -325,7 +362,7 @@ defineExpose({ newNote, newFolder })
         </NTooltip>
       </div>
     </div>
-    <div class="tree-body" @contextmenu="onBlankContextmenu">
+    <div ref="treeBody" class="tree-body" @contextmenu="onBlankContextmenu">
       <NTree
         v-if="store.tree.length"
         block-line
@@ -340,6 +377,8 @@ defineExpose({ newNote, newFolder })
         expand-on-click
         @update:expanded-keys="(keys: string[]) => (expandedKeys = keys)"
         @update:selected-keys="onSelect"
+        @dragover="onDragover"
+        @dragend="stopAutoScroll"
         @drop="onDrop"
       />
       <NEmpty v-else-if="store.loaded" description="还没有笔记" class="tree-empty">
